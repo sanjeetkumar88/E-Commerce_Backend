@@ -83,12 +83,13 @@ export const updateCategory = async (req, res, next) => {
 /* -------------------- GET ALL -------------------- */
 export const getAllCategories = async (req, res, next) => {
   try {
-    const categories = await categoryService.getAllCategories();
-    res
-      .status(200)
-      .json(new ApiResponse(200, categories, "Categories fetched successfully"));
-  } catch (error) {
-    next(error);
+    const { page, limit } = req.query;
+
+    const result = await categoryService.getAllCategories({ page, limit });
+
+    return res.status(200).json(new ApiResponse(true, "Categories fetched successfully", result));
+  } catch (err) {
+    next(err);
   }
 };
 

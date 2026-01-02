@@ -1,159 +1,145 @@
 import * as productService from "../services/product.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
 
-/* -------------------------------------------------------------------------- */
-/*                               CREATE PRODUCT (ADMIN)                        */
-/* -------------------------------------------------------------------------- */
+/* ---------------- CREATE PRODUCT + VARIANTS ---------------- */
 export const createProduct = async (req, res, next) => {
   try {
-    // Pass both body and uploaded files to the service
-   
-    const product = await productService.createProduct(req.body, req.files);
+    const {
+      name,
+      description,
+      shortDescription,
+      categoryId,
+      brand,
+      tags,
+      isFeatured,
+      isActive,
+      variants
+    } = req.body;
 
+    // ✅ Remove JSON.parse if variants is already an array
+    const variantList = Array.isArray(variants) ? variants : [];
 
-    res
+    const result = await productService.createProductService({
+      productData: { name, description, shortDescription, categoryId, brand, tags, isFeatured, isActive },
+      variants: variantList
+    });
+
+    return res.status(201).json(new ApiResponse(true, "Product created successfully", result));
+  } catch (err) {
+    console.error(err);
+    next(new ApiError(err.statusCode || 500, err.message || "Internal Server Error"));
+  }
+};
+
+/* ---------------- UPLOAD IMAGES ---------------- */
+export const uploadProductImages = async (req, res, next) => {
+  try {
+    const { productId } = req.params;
+
+    const result = await productService.uploadProductImagesService({
+      productId,
+      files: req.files,
+    });
+
+    return res
       .status(201)
-      .json(new ApiResponse(201, product, "Product created successfully"));
+      .json(new ApiResponse(201, result, "Images uploaded successfully"));
   } catch (error) {
-    next(error);
+    next(error); // 🔥 central error handler
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/*                               GET PRODUCT BY ID                             */
-/* -------------------------------------------------------------------------- */
-export const getProductById = async (req, res, next) => {
-  try {
-    const product = await productService.getProductById(req.params.productId);
-    res.status(200).json(new ApiResponse(200, product));
-  } catch (error) {
-    next(error);
-  }
-};
-
-/* -------------------------------------------------------------------------- */
-/*                          LIST / SEARCH PRODUCTS                              */
-/* -------------------------------------------------------------------------- */
-export const getAllProducts = async (req, res, next) => {
-  try {
-    const result = await productService.getAllProducts(req.query);
-    res.status(200).json(new ApiResponse(200, result));
-  } catch (error) {
-    next(error);
-  }
-};
-
-/* -------------------------------------------------------------------------- */
-/*                               UPDATE PRODUCT (ADMIN)                        */
-/* -------------------------------------------------------------------------- */
+/* ---------------- UPDATE PRODUCT + VARIANTS ---------------- */
 export const updateProduct = async (req, res, next) => {
   try {
-    const product = await productService.updateProduct(
-      req.params.productId,
-      req.body
-    );
+    const { productId } = req.params;
 
-    res
-      .status(200)
-      .json(new ApiResponse(200, product, "Product updated successfully"));
-  } catch (error) {
-    next(error);
+    const {
+      name,
+      description,
+      shortDescription,
+      categoryId,
+      brand,
+      tags,
+      isFeatured,
+      isActive,
+      variants,
+      removeVariantIds,
+      removeImageIds
+    } = req.body;
+
+    const result = await productService.updateProductService({
+      productId,
+      productData: { name, description, shortDescription, categoryId, brand, tags, isFeatured, isActive },
+      variants,
+      removeVariantIds,
+      removeImageIds,
+      files: req.files
+    });
+
+    return res.status(200).json(new ApiResponse(true, "Product updated successfully", result));
+  } catch (err) {
+    next(err);
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/*                               DELETE PRODUCT (SOFT)                         */
-/* -------------------------------------------------------------------------- */
+/* ---------------- GET PRODUCTS ---------------- */
+export const getProducts = async (req, res, next) => {
+  try {
+    const result = await productService.getProductsService(req.query);
+
+    return res
+      .status(200)
+      .json(new ApiResponse(true, "Products fetched successfully", result));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/* ---------------- GET PRODUCT BY ID ---------------- */
+ export const getProductById = async (req, res, next) => {
+  try {
+    const { productId } = req.params;
+
+    const product = await productService.getProductByIdService(productId);
+
+    return res.status(200).json(new ApiResponse(true, "Product fetched successfully", product));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/* ---------------- DELETE PRODUCT ---------------- */
 export const deleteProduct = async (req, res, next) => {
   try {
-    await productService.deleteProduct(req.params.productId);
-    res
-      .status(200)
-      .json(new ApiResponse(200, null, "Product deleted successfully"));
-  } catch (error) {
-    next(error);
+    const { productId } = req.params;
+    const hardDelete = req.query.hard === "true";
+    const result = await productService.deleteProductService({ productId, hardDelete });
+    res.status(200).json(new ApiResponse(true, result.message, null));
+  } catch (err) {
+    next(err);
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/*                            UPDATE PRODUCT STOCK (ADMIN)                     */
-/* -------------------------------------------------------------------------- */
-export const updateProductStock = async (req, res, next) => {
+/* ---------------- FEATURED PRODUCTS ---------------- */
+export const featuredProducts = async (req, res, next) => {
   try {
-    const { quantity } = req.body;
-
-    const product = await productService.updateProductStock(
-      req.params.productId,
-      quantity
-    );
-
-    res
-      .status(200)
-      .json(new ApiResponse(200, product, "Stock updated"));
-  } catch (error) {
-    next(error);
+    const limit = parseInt(req.query.limit) || 10;
+    const products = await productService.featuredProductsService(limit);
+    res.status(200).json(new ApiResponse(true, "Featured products fetched", products));
+  } catch (err) {
+    next(err);
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/*                           UPDATE PRODUCT PRICE (ADMIN)                      */
-/* -------------------------------------------------------------------------- */
-export const updateProductPrice = async (req, res, next) => {
+/* ---------------- POPULAR PRODUCTS ---------------- */
+export const popularProducts = async (req, res, next) => {
   try {
-    const { price, discountedPrice } = req.body;
-
-    const product = await productService.updateProductPrice(
-      req.params.productId,
-      price,
-      discountedPrice
-    );
-
-    res
-      .status(200)
-      .json(new ApiResponse(200, product, "Price updated"));
-  } catch (error) {
-    next(error);
+    const limit = parseInt(req.query.limit) || 10;
+    const products = await productService.popularProductsService(limit);
+    res.status(200).json(new ApiResponse(true, "Popular products fetched", products));
+  } catch (err) {
+    next(err);
   }
 };
-
-/* -------------------------------------------------------------------------- */
-/*                           FEATURED PRODUCTS                                 */
-/* -------------------------------------------------------------------------- */
-export const getFeaturedProducts = async (req, res, next) => {
-  try {
-    const products = await productService.getFeaturedProducts(
-      Number(req.query.limit) || 10
-    );
-    res.status(200).json(new ApiResponse(200, products));
-  } catch (error) {
-    next(error);
-  }
-};
-
-/* -------------------------------------------------------------------------- */
-/*                           POPULAR PRODUCTS                                  */
-/* -------------------------------------------------------------------------- */
-export const getPopularProducts = async (req, res, next) => {
-  try {
-    const products = await productService.getPopularProducts();
-    res.status(200).json(new ApiResponse(200, products));
-  } catch (error) {
-    next(error);
-  }
-};
-
-/* -------------------------------------------------------------------------- */
-/*                           NEW ARRIVALS                                      */
-/* -------------------------------------------------------------------------- */
-export const getNewArrivals = async (req, res, next) => {
-  try {
-    const products = await productService.getNewArrivals();
-    res.status(200).json(new ApiResponse(200, products));
-  } catch (error) {
-    next(error);
-  }
-};
-
-
-
-

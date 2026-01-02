@@ -1,369 +1,628 @@
 import mongoose from "mongoose";
 import { Product } from "../models/product.model.js";
-import { ProductVariant } from "../models/productVariant.js";
-import { ApiError } from "../utils/ApiError.js";
+import { ProductVariant } from "../models/productVarient.model.js";
 import { ProductImage } from "../models/productImage.model.js";
+import { ApiError } from "../utils/ApiError.js";
 import { uploadBufferToCloudinary } from "../utils/cloudinary.js";
-import { Category } from "../models/category.model.js";
 
+/* ---------------- CREATE PRODUCT + VARIANTS ---------------- */
+export const createProductService = async ({ productData, variants = [] }) => {
+  // 1. Create the product
+  const product = await Product.create(productData);
 
+  // 2. Create variants
+  const variantDocs = [];
+  for (const variant of variants) {
+    try {
+      const variantDoc = await ProductVariant.create({
+        ...variant,
+        productId: product._id,
+      });
+      variantDocs.push(variantDoc);
+    } catch (err) {
+      // Rollback if variant fails
+      await Product.findByIdAndDelete(product._id);
+      throw new ApiError(400, `Variant creation failed: ${err.message}`);
+    }
+  }
 
-/* -------------------------------------------------------------------------- */
-/*                            HELPER: UPLOAD IMAGES                             */
-/* -------------------------------------------------------------------------- */
-const uploadImages = async (files, productId, variantId = null) => {
-  const uploadedImages = [];
+  return { product, variants: variantDocs };
+};
 
-  if (!files?.length) return uploadedImages;
+/* ---------------- UPLOAD IMAGES ---------------- */
+export const uploadProductImagesService = async ({ productId, files }) => {
+  // 1️⃣ Validate product
+  const productExists = await Product.exists({ _id: productId });
+  if (!productExists) {
+    throw new ApiError(404, "Product not found");
+  }
+
+  if (!files || files.length === 0) {
+    throw new ApiError(400, "No images uploaded");
+  }
+
+  const imageDocs = [];
 
   for (const file of files) {
-    const result = await uploadBufferToCloudinary(file.buffer, `products/${productId}/${file.originalname}`);
-
-    const imgDoc = await ProductImage.create({
-      imageUrl: result.secure_url,
-      public_id: result.public_id,
-      productId,
-      variantId,
-    });
-
-    uploadedImages.push(imgDoc);
-  }
-
-  return uploadedImages;
-};
-
-/* -------------------------------------------------------------------------- */
-/*                               CREATE PRODUCT                                */
-/* -------------------------------------------------------------------------- */
-export const createProduct = async (productData, files) => {
-//   const session = await mongoose.startSession();
-//   session.startTransaction();
-
-  try {
-    const { variants, ...productDetail } = productData;
-
-    // Check duplicate product
-    const existingProduct = await Product.findOne(
-      { name: productDetail.name, isDeleted: false },
-      null,
-    );
-    if (existingProduct) {
-      throw new ApiError(409, "Product with this name already exists");
-    }
-
-    // Create product
-    const [createdProduct] = await Product.create(
-      [{ ...productDetail, isDeleted: false, soldCount: 0 }],
+    // Upload to Cloudinary
+    const cloudRes = await uploadBufferToCloudinary(
+      file.buffer,
+      `products/${productId}/${Date.now()}-${file.originalname}`
     );
 
-    // Separate product images and variant images
-    const productImages = files?.filter(f => f.fieldname === "images");
-    const variantFiles = files?.filter(f => f.fieldname.startsWith("variantImages"));
-
-    // Upload main product images
-    let createdProductImages = [];
-    if (productImages?.length) {
-      createdProductImages = await uploadImages(productImages, createdProduct._id);
+    // 🟢 PRODUCT IMAGES
+    if (file.fieldname === "productImages") {
+      imageDocs.push({
+        productId,
+        imageUrl: cloudRes.secure_url,
+        public_id: cloudRes.public_id,
+        isPrimary: false,
+      });
+      continue;
     }
 
-    // Create variants and upload their images
-    let createdVariants = [];
-    let variantImages = [];
-    if (variants?.length) {
-      for (const [index, v] of variants.entries()) {
-        const variantFileGroup = variantFiles?.filter(f => f.fieldname === `variantImages[${index}]`) || [];
-        
-        
-        // Create variant
-        const [createdVariant] = await ProductVariant.create(
-          [{ ...v, productId: createdProduct._id }],
-        );
-        createdVariants.push(createdVariant);
+    // 🔵 VARIANT IMAGES
+    const match = file.fieldname.match(/variantImages\[(.*)\]/);
+    if (match) {
+      const variantId = match[1];
 
-        // Upload variant images
-        if (variantFileGroup.length) {
-          const uploaded = await uploadImages(variantFileGroup, createdProduct._id, createdVariant._id);
-          variantImages.push(...uploaded);
-        }
-      }
+      const validVariant = await ProductVariant.exists({
+        _id: variantId,
+        productId,
+      });
+
+      if (!validVariant) continue;
+
+      imageDocs.push({
+        productId,
+        variantId,
+        imageUrl: cloudRes.secure_url,
+        public_id: cloudRes.public_id,
+        isPrimary: false,
+      });
     }
-
-    // await session.commitTransaction();
-    // session.endSession();
-
-    return {
-      ...createdProduct.toObject(),
-      variants: createdVariants,
-      productImages: createdProductImages,
-      variantImages,
-    };
-  } catch (error) {
-    // await session.abortTransaction();
-    // session.endSession();
-    throw error;
-  }
-};
-
-
-/* -------------------------------------------------------------------------- */
-/*                          LIST / SEARCH PRODUCTS                              */
-/* -------------------------------------------------------------------------- */
-
-
-
-export const getAllProducts = async ({
-  page = 1,
-  limit = 20,
-  search,
-  brand,
-  minPrice,
-  maxPrice,
-  sortBy = "createdAt",
-  sortOrder = "desc",
-}) => {
-  const skip = (page - 1) * limit;
-
-  const filter = {
-    isDeleted: false,
-    isActive: true,
-  };
-
-  if (search) {
-    filter.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { description: { $regex: search, $options: "i" } },
-      { tags: { $regex: search, $options: "i" } },
-      { brand: { $regex: search, $options: "i" } },
-    ];
   }
 
-  if (brand) filter.brand = brand;
-
-  if (minPrice || maxPrice) {
-    filter.price = {};
-    if (minPrice) filter.price.$gte = minPrice;
-    if (maxPrice) filter.price.$lte = maxPrice;
+  if (imageDocs.length === 0) {
+    throw new ApiError(400, "No valid images to upload");
   }
 
-  const products = await Product.find(filter)
-    .sort({ [sortBy]: sortOrder === "asc" ? 1 : -1 })
-    .skip(skip)
-    .limit(limit)
-    .populate({
-      path: "categoryId",
-      select: "name slug",
-    });
-
-  const total = await Product.countDocuments(filter);
+  await ProductImage.insertMany(imageDocs);
 
   return {
-    data: products.map(p => ({
-      ...p.toObject(),
-    })),
-    pagination: {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    },
+    uploadedCount: imageDocs.length,
   };
 };
 
-
-
-/* -------------------------------------------------------------------------- */
-/*                               UPDATE PRODUCT                                */
-/* -------------------------------------------------------------------------- */
-
-export const updateProduct = async (productId, updateData) => {
+/* ----------------- UPDATE PRODUCT ----------------- */
+export const updateProductService = async ({
+  productId,
+  productData,
+  variants = [],
+  removeVariantIds = [],
+  removeImageIds = [],
+  files = []
+}) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const { variants, ...productFields } = updateData;
-
-    // Allowed product fields
-    const allowedFields = [
-      "name",
-      "description",
-      "shortDescription",
-      "price",
-      "discountedPrice",
-      "brand",
-      "stockQuantity",
-      "tags",
-      "categoryId",
-      "isFeatured",
-      "isActive",
-      "status",
-    ];
-
-    const filteredData = Object.fromEntries(
-      Object.entries(productFields).filter(([key]) =>
-        allowedFields.includes(key)
-      )
-    );
-
-    // Update product
-    const product = await Product.findOneAndUpdate(
-      { _id: productId, isDeleted: false },
-      filteredData,
-      { new: true, runValidators: true, session }
-    );
-
+    // 1️⃣ Validate product
+    const product = await Product.findById(productId).session(session);
     if (!product) throw new ApiError(404, "Product not found");
 
-    // Update or create variants if provided
-    let updatedVariants = [];
-    if (variants?.length) {
-      for (const v of variants) {
-        if (v._id) {
-          // Update existing variant
-          const updated = await ProductVariant.findOneAndUpdate(
-            { _id: v._id, productId },
-            v,
-            { new: true, session }
-          );
-          if (updated) updatedVariants.push(updated);
-        } else {
-          // Create new variant
-          const created = await ProductVariant.create([{
-            ...v,
-            productId
-          }], { session });
-          updatedVariants.push(created[0]);
+    // 2️⃣ Update product fields
+    Object.assign(product, productData);
+    await product.save({ session });
+
+    // 3️⃣ Remove specified variants
+    if (removeVariantIds.length > 0) {
+      await ProductVariant.deleteMany({ _id: { $in: removeVariantIds }, productId }).session(session);
+      await ProductImage.deleteMany({ variantId: { $in: removeVariantIds } }).session(session);
+    }
+
+    // 4️⃣ Remove specified images
+    if (removeImageIds.length > 0) {
+      const imagesToRemove = await ProductImage.find({ _id: { $in: removeImageIds }, productId }).session(session);
+      for (const img of imagesToRemove) {
+        // Delete from Cloudinary
+        if (img.public_id) {
+          await cloudinary.uploader.destroy(img.public_id);
         }
+      }
+      await ProductImage.deleteMany({ _id: { $in: removeImageIds }, productId }).session(session);
+    }
+
+    // 5️⃣ Upsert variants (existing or new)
+    const variantDocs = [];
+    for (const v of variants) {
+      if (v.id) {
+        const variant = await ProductVariant.findOne({ _id: v.id, productId }).session(session);
+        if (!variant) continue;
+        Object.assign(variant, v);
+        await variant.save({ session });
+        variantDocs.push(variant);
+      } else {
+        const newVariant = await ProductVariant.create([{ ...v, productId }], { session });
+        variantDocs.push(newVariant[0]);
       }
     }
 
+    // 6️⃣ Upload new images
+    const imageDocs = [];
+    for (const file of files) {
+      const cloudRes = await uploadBufferToCloudinary(
+        file.buffer,
+        `products/${productId}/${Date.now()}-${file.originalname}`
+      );
+
+      if (file.fieldname === "productImages") {
+        imageDocs.push({
+          productId,
+          imageUrl: cloudRes.secure_url,
+          public_id: cloudRes.public_id,
+          isPrimary: false,
+        });
+        continue;
+      }
+
+      const match = file.fieldname.match(/variantImages\[(.*)\]/);
+      if (match) {
+        const variantId = match[1];
+        const validVariant = await ProductVariant.exists({ _id: variantId, productId });
+        if (!validVariant) continue;
+
+        imageDocs.push({
+          productId,
+          variantId,
+          imageUrl: cloudRes.secure_url,
+          public_id: cloudRes.public_id,
+          isPrimary: false,
+        });
+      }
+    }
+
+    if (imageDocs.length > 0) {
+      await ProductImage.insertMany(imageDocs, { session });
+    }
+
+    // 7️⃣ Commit transaction
     await session.commitTransaction();
     session.endSession();
 
+    // 8️⃣ Return updated product + variants + images (Shiprocket-ready)
+    const updatedProduct = await Product.aggregate([
+      { $match: { _id: product._id } },
+      {
+        $lookup: {
+          from: "productvariants",
+          localField: "_id",
+          foreignField: "productId",
+          as: "variants",
+        },
+      },
+      {
+        $lookup: {
+          from: "productimages",
+          localField: "_id",
+          foreignField: "productId",
+          as: "images",
+        },
+      },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "categoryId",
+          foreignField: "_id",
+          as: "category",
+        },
+      },
+      {
+        $project: {
+          id: "$_id",
+          title: "$name",
+          body_html: "$description",
+          vendor: "$brand",
+          product_type: { $arrayElemAt: ["$category.name", 0] },
+          created_at: "$createdAt",
+          updated_at: "$updatedAt",
+          status: "$status",
+          tags: {
+            $reduce: {
+              input: "$tags",
+              initialValue: "",
+              in: { $cond: [{ $eq: ["$$value", ""] }, "$$this", { $concat: ["$$value", ", ", "$$this"] }] },
+            },
+          },
+          image: {
+            $map: {
+              input: { $filter: { input: "$images", as: "img", cond: { $eq: ["$$img.variantId", null] } } },
+              as: "i",
+              in: { src: "$$i.imageUrl" },
+            },
+          },
+          variants: {
+            $map: {
+              input: "$variants",
+              as: "v",
+              in: {
+                id: "$$v._id",
+                title: { $concat: ["$$v.color", " / ", "$$v.size"] },
+                price: { $toString: "$$v.price" },
+                sku: "$$v.sku",
+                quantity: "$$v.stockQuantity",
+                created_at: "$$v.createdAt",
+                updated_at: "$$v.updatedAt",
+                option_values: { Color: "$$v.color", Size: "$$v.size" },
+                images: {
+                  $map: {
+                    input: { $filter: { input: "$images", as: "img", cond: { $eq: ["$$img.variantId", "$$v._id"] } } },
+                    as: "vi",
+                    in: { src: "$$vi.imageUrl" },
+                  },
+                },
+                taxable: true,
+                compare_at_price: null,
+                grams: 0,
+              },
+            },
+          },
+          options: [
+            { name: "Color", values: { $setUnion: ["$variants.color"] } },
+            { name: "Size", values: { $setUnion: ["$variants.size"] } },
+          ],
+        },
+      },
+    ]);
+
     return {
-      ...product.toObject(),
-      variants: updatedVariants,
+      product: updatedProduct[0],
+      uploadedImages: imageDocs.length,
     };
-  } catch (error) {
+  } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    throw error;
+    throw err;
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/*                               DELETE PRODUCT (SOFT)                          */
-/* -------------------------------------------------------------------------- */
+/* ----------------- GET ALL PRODUCTS ----------------- */
+export const getProductsService = async ({ page = 1, limit = 10, search = "" }) => {
+  page = parseInt(page);
+  limit = parseInt(limit);
+  const skip = (page - 1) * limit;
 
-export const deleteProduct = async (productId) => {
-  const product = await Product.findOneAndUpdate(
-    { _id: productId, isDeleted: false },
-    { isDeleted: true },
-    { new: true }
-  );
+  // Base match query
+  const matchQuery = { isDeleted: false };
 
-  if (!product) {
-    throw new ApiError(404, "Product not found");
+  // 🔎 Full-text search
+  if (search && search.trim() !== "") {
+    matchQuery.$or = [
+      { $text: { $search: search } }, // text search on name, description, tags
+    ];
   }
 
-  return product;
-};
+  // Count total matching documents
+  const total = await Product.countDocuments(matchQuery);
 
-/* -------------------------------------------------------------------------- */
-/*                            STOCK MANAGEMENT                                  */
-/* -------------------------------------------------------------------------- */
+  // Aggregation pipeline
+  const products = await Product.aggregate([
+    { $match: matchQuery },
 
-export const updateProductStock = async (productId, quantity) => {
-  const product = await Product.findOne({
-    _id: productId,
-    isDeleted: false,
+    /* ---------------- VARIANTS ---------------- */
+    {
+      $lookup: {
+        from: "productvariants",
+        localField: "_id",
+        foreignField: "productId",
+        as: "variants",
+      },
+    },
+
+    // Optional: filter variants by SKU search if needed
+    ...(search
+      ? [
+          {
+            $addFields: {
+              variants: {
+                $filter: {
+                  input: "$variants",
+                  as: "v",
+                  cond: { $regexMatch: { input: "$$v.sku", regex: search, options: "i" } },
+                },
+              },
+            },
+          },
+        ]
+      : []),
+
+    /* ---------------- IMAGES ---------------- */
+    {
+      $lookup: {
+        from: "productimages",
+        localField: "_id",
+        foreignField: "productId",
+        as: "images",
+      },
+    },
+
+    /* ---------------- CATEGORIES ---------------- */
+    {
+      $lookup: {
+        from: "categories",
+        localField: "categoryId",
+        foreignField: "_id",
+        as: "category",
+      },
+    },
+
+    /* ---------------- PROJECT OUTPUT ---------------- */
+    {
+      $project: {
+        id: "$_id",
+        title: "$name",
+        body_html: "$description",
+        vendor: "$brand",
+        product_type: { $arrayElemAt: ["$category.name", 0] },
+        created_at: "$createdAt",
+        updated_at: "$updatedAt",
+        status: "$status",
+
+        /* ---------------- PRODUCT IMAGES ---------------- */
+        image: {
+          $map: {
+            input: {
+              $filter: {
+                input: "$images",
+                as: "img",
+                cond: { $eq: ["$$img.variantId", null] }, // product images
+              },
+            },
+            as: "i",
+            in: { src: "$$i.imageUrl" },
+          },
+        },
+
+        /* ---------------- VARIANTS ---------------- */
+        variants: {
+          $map: {
+            input: "$variants",
+            as: "v",
+            in: {
+              id: "$$v._id",
+              title: { $concat: ["$$v.color", " / ", "$$v.size"] },
+              price: { $toString: "$$v.price" },
+              compare_at_price: null,
+              sku: "$$v.sku",
+              quantity: "$$v.stockQuantity",
+              created_at: "$$v.createdAt",
+              updated_at: "$$v.updatedAt",
+              taxable: true,
+              grams: 0,
+              weight: 0,
+              weight_unit: "lb",
+              option_values: { Color: "$$v.color", Size: "$$v.size" },
+
+              /* -------- VARIANT IMAGES -------- */
+              images: {
+                $map: {
+                  input: {
+                    $filter: {
+                      input: "$images",
+                      as: "img",
+                      cond: { $eq: ["$$img.variantId", "$$v._id"] },
+                    },
+                  },
+                  as: "vi",
+                  in: { src: "$$vi.imageUrl" },
+                },
+              },
+            },
+          },
+        },
+
+        /* ---------------- OPTIONS ---------------- */
+        options: [
+          { name: "Color", values: { $setUnion: ["$variants.color"] } },
+          { name: "Size", values: { $setUnion: ["$variants.size"] } },
+        ],
+      },
+    },
+
+    { $sort: { createdAt: -1 } }, // newest first
+    { $skip: skip },
+    { $limit: limit },
+  ]);
+
+  // Pick first product image for main `image.src`
+  products.forEach(prod => {
+    prod.image = prod.image.length > 0 ? { src: prod.image[0].src } : null;
   });
 
-  if (!product) {
-    throw new ApiError(404, "Product not found");
-  }
-
-  if (product.stock + quantity < 0) {
-    throw new ApiError(400, "Insufficient stock");
-  }
-
-  product.stock += quantity;
-  await product.save();
-
-  return product;
+  return {
+    total,
+    products,
+  };
 };
 
-/* -------------------------------------------------------------------------- */
-/*                           PRICE MANAGEMENT                                   */
-/* -------------------------------------------------------------------------- */
 
-export const updateProductPrice = async (
-  productId,
-  price,
-  discountedPrice
-) => {
-  if (discountedPrice && discountedPrice >= price) {
-    throw new ApiError(400, "Discounted price must be less than price");
+/* ---------------- GET PRODUCT BY ID ---------------- */
+export const getProductByIdService = async (productId) => {
+  if (!mongoose.Types.ObjectId.isValid(productId)) {
+    throw new Error("Invalid product ID");
   }
 
-  const product = await Product.findOneAndUpdate(
-    { _id: productId, isDeleted: false },
-    { price, discountedPrice },
-    { new: true }
-  );
+  const product = await Product.aggregate([
+    { $match: { _id: mongoose.Types.ObjectId(productId), isDeleted: false } },
 
-  if (!product) {
-    throw new ApiError(404, "Product not found");
-  }
-
-  return product;
-};
-
-/* -------------------------------------------------------------------------- */
-/*                           SOLD COUNT UPDATE                                  */
-/* -------------------------------------------------------------------------- */
-
-export const incrementSoldCount = async (productId, quantity) => {
-  return Product.findByIdAndUpdate(
-    productId,
+    // Lookup variants
     {
-      $inc: { soldCount: quantity },
-      $inc: { stock: -quantity },
+      $lookup: {
+        from: "productvariants",
+        localField: "_id",
+        foreignField: "productId",
+        as: "variants",
+      },
     },
-    { new: true }
-  );
+
+    // Lookup images (product + variants)
+    {
+      $lookup: {
+        from: "productimages",
+        localField: "_id",
+        foreignField: "productId",
+        as: "images",
+      },
+    },
+
+    // Lookup category name
+    {
+      $lookup: {
+        from: "categories",
+        localField: "categoryId",
+        foreignField: "_id",
+        as: "category",
+      },
+    },
+
+    // Project Shiprocket-ready format
+    {
+      $project: {
+        id: "$_id",
+        title: "$name",
+        body_html: "$description",
+        vendor: "$brand",
+        product_type: { $arrayElemAt: ["$category.name", 0] },
+        created_at: "$createdAt",
+        updated_at: "$updatedAt",
+        status: "$status",
+        tags: {
+          $reduce: {
+            input: "$tags",
+            initialValue: "",
+            in: { $cond: [{ $eq: ["$$value", ""] }, "$$this", { $concat: ["$$value", ", ", "$$this"] }] },
+          },
+        },
+        image: {
+          $map: {
+            input: { $filter: { input: "$images", as: "img", cond: { $eq: ["$$img.variantId", null] } } },
+            as: "i",
+            in: { src: "$$i.imageUrl" },
+          },
+        },
+        variants: {
+          $map: {
+            input: "$variants",
+            as: "v",
+            in: {
+              id: "$$v._id",
+              title: { $concat: ["$$v.color", " / ", "$$v.size"] },
+              price: { $toString: "$$v.price" },
+              sku: "$$v.sku",
+              quantity: "$$v.stockQuantity",
+              created_at: "$$v.createdAt",
+              updated_at: "$$v.updatedAt",
+              option_values: { Color: "$$v.color", Size: "$$v.size" },
+              images: {
+                $map: {
+                  input: { $filter: { input: "$images", as: "img", cond: { $eq: ["$$img.variantId", "$$v._id"] } } },
+                  as: "vi",
+                  in: { src: "$$vi.imageUrl" },
+                },
+              },
+              taxable: true,
+              compare_at_price: null,
+              grams: 0,
+            },
+          },
+        },
+        options: [
+          { name: "Color", values: { $setUnion: ["$variants.color"] } },
+          { name: "Size", values: { $setUnion: ["$variants.size"] } },
+        ],
+      },
+    },
+  ]);
+
+  if (!product || product.length === 0) {
+    throw new Error("Product not found");
+  }
+
+  return product[0];
 };
 
-/* -------------------------------------------------------------------------- */
-/*                           FEATURED / POPULAR                                  */
-/* -------------------------------------------------------------------------- */
+/* ---------------- DELETE PRODUCT (soft delete) ---------------- */
+export const deleteProductService = async ({ productId, hardDelete = false }) => {
+  if (!mongoose.Types.ObjectId.isValid(productId)) {
+    throw new ApiError(400, "Invalid product ID");
+  }
 
-export const getFeaturedProducts = async (limit = 10) => {
-  return Product.find({
-    isFeatured: true,
-    isActive: true,
-    isDeleted: false,
-  })
+  if (hardDelete) {
+    await Product.findByIdAndDelete(productId);
+    await ProductVariant.deleteMany({ productId });
+    await ProductImage.deleteMany({ productId });
+    return { message: "Product permanently deleted" };
+  } else {
+    const product = await Product.findByIdAndUpdate(
+      productId,
+      { isDeleted: true, isActive: false },
+      { new: true }
+    );
+    if (!product) throw new ApiError(404, "Product not found");
+    return { message: "Product soft deleted" };
+  }
+};
+
+/* ---------------- FEATURED PRODUCTS ---------------- */
+export const featuredProductsService = async (limit = 10) => {
+  const products = await Product.find({ isFeatured: true, isActive: true, isDeleted: false })
+    .populate({
+      path: "defaultVariant",
+    })
+    .populate({
+      path: "images",
+      match: { variantId: null },
+    })
     .sort({ createdAt: -1 })
-    .limit(limit);
+    .limit(limit)
+    .lean();
+
+  return products.map(p => ({
+    id: p._id,
+    title: p.name,
+    image: p.images?.[0]?.imageUrl || null,
+    price: p.defaultVariant?.price || 0,
+    status: p.status,
+  }));
 };
 
-export const getPopularProducts = async () => {
-  return Product.find({
-    isActive: true,
-    isDeleted: false,
-  })
-    .sort({ soldCount: -1 })
-    .limit(10);
-};
-
-export const getNewArrivals = async () => {
-  return Product.find({
-    isActive: true,
-    isDeleted: false,
-  })
+/* ---------------- POPULAR PRODUCTS ---------------- */
+export const popularProductsService = async (limit = 10) => {
+  // For demo: popular = most recently created active products
+  const products = await Product.find({ isActive: true, isDeleted: false })
+    .populate({
+      path: "defaultVariant",
+    })
+    .populate({
+      path: "images",
+      match: { variantId: null },
+    })
     .sort({ createdAt: -1 })
-    .limit(10);
+    .limit(limit)
+    .lean();
+
+  return products.map(p => ({
+    id: p._id,
+    title: p.name,
+    image: p.images?.[0]?.imageUrl || null,
+    price: p.defaultVariant?.price || 0,
+    status: p.status,
+  }));
 };
+
+
+
+
 
 
 

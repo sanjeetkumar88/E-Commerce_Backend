@@ -3,7 +3,7 @@ import { Cart } from "../models/cart.model.js";
 import { CartItem } from "../models/cart.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { Product } from "../models/product.model.js";
-import { ProductVariant } from "../models/productVariant.js";
+import { ProductVariant } from "../models/productVarient.model.js";
 import { ProductImage } from "../models/productImage.model.js";
 
 /* ---------------- GET OR CREATE CART ---------------- */
@@ -44,6 +44,83 @@ export const getOrCreateCart = async (userId) => {
 //   return cartItem;
 // };
 
+// export const addToCartService = async ({
+//   userId,
+//   productId,
+//   variantId,
+//   quantity = 1,
+// }) => {
+//   if (quantity < 1) {
+//     throw new ApiError(400, "Quantity must be at least 1");
+//   }
+
+//   /* ---------------- PRODUCT VALIDATION ---------------- */
+//   const product = await Product.findOne({
+//     _id: productId,
+//     isActive: true,
+//     isDeleted: false,
+//   });
+
+//   if (!product) {
+//     throw new ApiError(404, "Product not found");
+//   }
+
+//   /* ---------------- VARIANT VALIDATION ---------------- */
+//   let price = product.salePrice ?? product.price;
+//   let availableStock = product.stockQuantity;
+
+//   if (variantId) {
+//     const variant = await ProductVariant.findOne({
+//       _id: variantId,
+//       productId,
+//       isActive: true,
+//     });
+
+//     if (!variant) {
+//       throw new ApiError(404, "Product variant not found");
+//     }
+
+//     price = variant.price;
+//     availableStock = variant.stockQuantity;
+//   }
+
+//   /* ---------------- STOCK CHECK ---------------- */
+//   if (availableStock < quantity) {
+//     throw new ApiError(
+//       409,
+//       `Only ${availableStock} item(s) available in stock`
+//     );
+//   }
+
+//   /* ---------------- GET / CREATE CART ---------------- */
+//   const cart = await getOrCreateCart(userId);
+
+//   /* ---------------- UPSERT CART ITEM ---------------- */
+//   const cartItem = await CartItem.findOneAndUpdate(
+//     {
+//       cartId: cart._id,
+//       productId,
+//       variantId: variantId || null,
+//     },
+//     {
+//       $inc: { quantity },
+//       $setOnInsert: { price },
+//     },
+//     {
+//       new: true,
+//       upsert: true,
+//     }
+//   );
+
+//   /* ---------------- FINAL QUANTITY VALIDATION ---------------- */
+//   if (cartItem.quantity > availableStock) {
+//     await CartItem.findByIdAndDelete(cartItem._id);
+//     throw new ApiError(409, `Cannot add more than ${availableStock} item(s)`);
+//   }
+
+//   return cartItem;
+// };
+
 export const addToCartService = async ({
   userId,
   productId,
@@ -61,14 +138,18 @@ export const addToCartService = async ({
     isDeleted: false,
   });
 
+
   if (!product) {
     throw new ApiError(404, "Product not found");
   }
 
-  /* ---------------- VARIANT VALIDATION ---------------- */
   let price = product.salePrice ?? product.price;
-  let availableStock = product.stockQuantity;
+  let availableStock;
+  if(!product.hasVariants){
+  availableStock = product.stockQuantity;
+  }
 
+  /* ---------------- VARIANT VALIDATION ---------------- */
   if (variantId) {
     const variant = await ProductVariant.findOne({
       _id: variantId,
@@ -76,12 +157,23 @@ export const addToCartService = async ({
       isActive: true,
     });
 
+
+
     if (!variant) {
       throw new ApiError(404, "Product variant not found");
     }
 
-    price = variant.price;
+    // Stock check from variant
+    console.log(variant);
+    
     availableStock = variant.stockQuantity;
+
+    // Price calculation with priceAdjustment
+    if (variant.priceAdjustment && variant.priceAdjustment !== 0) {
+      price = (product.salePrice ?? product.price) + variant.priceAdjustment;
+    } else {
+      price = product.salePrice ?? product.price;
+    }
   }
 
   /* ---------------- STOCK CHECK ---------------- */

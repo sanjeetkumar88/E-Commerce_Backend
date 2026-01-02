@@ -1,14 +1,17 @@
 // controllers/cart.controller.js
+
 import * as cartService from "../services/cart.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
 /* ---------------- ADD TO CART ---------------- */
 export const addToCart = async (req, res, next) => {
   try {
+    
     const item = await cartService.addToCartService({
       userId: req.user.id,
       ...req.body,
     });
+    
 
     res.status(201).json(new ApiResponse(201, item, "Item added to cart"));
   } catch (err) {

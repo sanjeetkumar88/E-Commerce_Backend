@@ -1,20 +1,18 @@
 import { Router } from "express";
 import {
   createProduct,
-  getProductById,
-  getAllProducts,
+  uploadProductImages,
+  getProducts,
   updateProduct,
+  getProductById,
   deleteProduct,
-  updateProductStock,
-  updateProductPrice,
-  getFeaturedProducts,
-  getPopularProducts,
-  getNewArrivals,
+  popularProducts,
+  featuredProducts
 } from "../controllers/productController.js";
 
 import { verifyJWT } from "../middlewares/authMiddleware.js";
 import { isAdmin } from "../middlewares/adminMiddleware.js";
-import  upload  from "../middlewares/multerMiddleware.js";
+import upload from "../middlewares/multerMiddleware.js";
 
 const router = Router();
 
@@ -23,41 +21,42 @@ const router = Router();
 /* -------------------------------------------------------------------------- */
 
 // List & search products
-router.route("/").get(getAllProducts);
+router.route("/").get(getProducts);
 
-// Featured / Popular / New arrivals
-router.route("/featured").get(getFeaturedProducts);
-
-router.route("/popular").get(getPopularProducts);
-
-router.route("/new-arrivals").get(getNewArrivals);
-
-
-// Single product
+// Get product by ID
 router.route("/:productId").get(getProductById);
+
+// Featured products
+router.route("/featured").get(featuredProducts);
+
+// Popular products
+router.route("/popular").get(popularProducts);
+
 
 /* -------------------------------------------------------------------------- */
 /*                              ADMIN ROUTES                                   */
 /* -------------------------------------------------------------------------- */
 
-// Create product
-router.route("/").post(
-  verifyJWT,
-  isAdmin,
-  upload.any(), // handles multiple uploaded files
-  createProduct
-);
+  // Create product
+  router.route("/").post(
+    verifyJWT,
+    isAdmin, // handles multiple uploaded files
+    createProduct
+  );
 
-// Update product
-router
-  .route("/:productId")
-  .patch(verifyJWT, isAdmin, updateProduct)
-  .delete(verifyJWT, isAdmin, deleteProduct);
+  // Upload product images
+  router
+    .route("/:productId/images")
+    .post(verifyJWT, isAdmin, upload.any(), uploadProductImages);
 
-// Stock management
-router.route("/:productId/stock").patch(verifyJWT, isAdmin, updateProductStock);
+  // Update product & variants
+  router
+    .route("/:productId/update")
+    .put(verifyJWT, isAdmin, upload.any(), updateProduct);
 
-// Price management
-router.route("/:productId/price").patch(verifyJWT, isAdmin, updateProductPrice);
+  // Delete product
+  router
+    .route("/:productId/delete")
+    .delete(verifyJWT, isAdmin, deleteProduct);
 
 export default router;
