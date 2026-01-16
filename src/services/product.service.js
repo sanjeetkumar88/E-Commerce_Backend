@@ -6,29 +6,101 @@ import { ApiError } from "../utils/ApiError.js";
 import { uploadBufferToCloudinary } from "../utils/cloudinary.js";
 
 /* ---------------- CREATE PRODUCT + VARIANTS ---------------- */
+// export const createProductService = async ({ productData, variants = [] }) => {
+//   // 1. Create the product
+//   const product = await Product.create(productData);
+
+//   // 2. Create variants
+//   const variantDocs = [];
+//   for (const variant of variants) {
+//     try {
+//       const variantDoc = await ProductVariant.create({
+//         ...variant,
+//         productId: product._id,
+//       });
+//       variantDocs.push(variantDoc);
+//     } catch (err) {
+//       // Rollback if variant fails
+//       await Product.findByIdAndDelete(product._id);
+//       throw new ApiError(400, `Variant creation failed: ${err.message}`);
+//     }
+//   }
+
+//   return { product, variants: variantDocs };
+// };
+
 export const createProductService = async ({ productData, variants = [] }) => {
-  // 1. Create the product
-  const product = await Product.create(productData);
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  // 2. Create variants
-  const variantDocs = [];
-  for (const variant of variants) {
-    try {
-      const variantDoc = await ProductVariant.create({
-        ...variant,
-        productId: product._id,
-      });
-      variantDocs.push(variantDoc);
-    } catch (err) {
-      // Rollback if variant fails
-      await Product.findByIdAndDelete(product._id);
-      throw new ApiError(400, `Variant creation failed: ${err.message}`);
+  try {
+    /* ---------------- CREATE PRODUCT ---------------- */
+    const [product] = await Product.create([productData], { session });
+
+    if (!variants.length) {
+      throw new ApiError(400, "At least one product variant is required");
     }
+
+    let hasDefaultVariant = false;
+    const variantDocs = [];
+
+    /* ---------------- CREATE VARIANTS ---------------- */
+    for (const variant of variants) {
+      if (!variant.price) {
+        throw new ApiError(400, "Variant price is required");
+      }
+
+      console.log(variant.salePrice);
+
+      if (!variant.weight) {
+        throw new ApiError(400, "Variant weight is required for shipping");
+      }
+
+      if (!variant.hsnCode) {
+        throw new ApiError(400, "HSN code is required");
+      }
+
+      if (variant.isDefault) {
+        hasDefaultVariant = true;
+      }
+
+      const variantDoc = await ProductVariant.create(
+        [
+          {
+            productId: product._id,
+            color: variant.color,
+            size: variant.size,
+            price: variant.price,
+            salePrice: variant.salePrice,
+            stockQuantity: variant.stockQuantity ?? 0,
+            isDefault: variant.isDefault ?? false,
+            isActive: variant.isActive ?? true,
+            weight: variant.weight,
+            dimensions: variant.dimensions,
+            hsnCode: variant.hsnCode,
+            taxRate: variant.taxRate ?? 0,
+          },
+        ],
+        { session }
+      );
+
+      variantDocs.push(variantDoc[0]);
+    }
+
+    if (!hasDefaultVariant) {
+      throw new ApiError(400, "One variant must be marked as default");
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return { product, variants: variantDocs };
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    throw err;
   }
-
-  return { product, variants: variantDocs };
 };
-
 /* ---------------- UPLOAD IMAGES ---------------- */
 export const uploadProductImagesService = async ({ productId, files }) => {
   // 1️⃣ Validate product
@@ -101,7 +173,7 @@ export const updateProductService = async ({
   variants = [],
   removeVariantIds = [],
   removeImageIds = [],
-  files = []
+  files = [],
 }) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -117,33 +189,49 @@ export const updateProductService = async ({
 
     // 3️⃣ Remove specified variants
     if (removeVariantIds.length > 0) {
-      await ProductVariant.deleteMany({ _id: { $in: removeVariantIds }, productId }).session(session);
-      await ProductImage.deleteMany({ variantId: { $in: removeVariantIds } }).session(session);
+      await ProductVariant.deleteMany({
+        _id: { $in: removeVariantIds },
+        productId,
+      }).session(session);
+      await ProductImage.deleteMany({
+        variantId: { $in: removeVariantIds },
+      }).session(session);
     }
 
     // 4️⃣ Remove specified images
     if (removeImageIds.length > 0) {
-      const imagesToRemove = await ProductImage.find({ _id: { $in: removeImageIds }, productId }).session(session);
+      const imagesToRemove = await ProductImage.find({
+        _id: { $in: removeImageIds },
+        productId,
+      }).session(session);
       for (const img of imagesToRemove) {
         // Delete from Cloudinary
         if (img.public_id) {
           await cloudinary.uploader.destroy(img.public_id);
         }
       }
-      await ProductImage.deleteMany({ _id: { $in: removeImageIds }, productId }).session(session);
+      await ProductImage.deleteMany({
+        _id: { $in: removeImageIds },
+        productId,
+      }).session(session);
     }
 
     // 5️⃣ Upsert variants (existing or new)
     const variantDocs = [];
     for (const v of variants) {
       if (v.id) {
-        const variant = await ProductVariant.findOne({ _id: v.id, productId }).session(session);
+        const variant = await ProductVariant.findOne({
+          _id: v.id,
+          productId,
+        }).session(session);
         if (!variant) continue;
         Object.assign(variant, v);
         await variant.save({ session });
         variantDocs.push(variant);
       } else {
-        const newVariant = await ProductVariant.create([{ ...v, productId }], { session });
+        const newVariant = await ProductVariant.create([{ ...v, productId }], {
+          session,
+        });
         variantDocs.push(newVariant[0]);
       }
     }
@@ -169,7 +257,10 @@ export const updateProductService = async ({
       const match = file.fieldname.match(/variantImages\[(.*)\]/);
       if (match) {
         const variantId = match[1];
-        const validVariant = await ProductVariant.exists({ _id: variantId, productId });
+        const validVariant = await ProductVariant.exists({
+          _id: variantId,
+          productId,
+        });
         if (!validVariant) continue;
 
         imageDocs.push({
@@ -231,12 +322,24 @@ export const updateProductService = async ({
             $reduce: {
               input: "$tags",
               initialValue: "",
-              in: { $cond: [{ $eq: ["$$value", ""] }, "$$this", { $concat: ["$$value", ", ", "$$this"] }] },
+              in: {
+                $cond: [
+                  { $eq: ["$$value", ""] },
+                  "$$this",
+                  { $concat: ["$$value", ", ", "$$this"] },
+                ],
+              },
             },
           },
           image: {
             $map: {
-              input: { $filter: { input: "$images", as: "img", cond: { $eq: ["$$img.variantId", null] } } },
+              input: {
+                $filter: {
+                  input: "$images",
+                  as: "img",
+                  cond: { $eq: ["$$img.variantId", null] },
+                },
+              },
               as: "i",
               in: { src: "$$i.imageUrl" },
             },
@@ -256,7 +359,13 @@ export const updateProductService = async ({
                 option_values: { Color: "$$v.color", Size: "$$v.size" },
                 images: {
                   $map: {
-                    input: { $filter: { input: "$images", as: "img", cond: { $eq: ["$$img.variantId", "$$v._id"] } } },
+                    input: {
+                      $filter: {
+                        input: "$images",
+                        as: "img",
+                        cond: { $eq: ["$$img.variantId", "$$v._id"] },
+                      },
+                    },
                     as: "vi",
                     in: { src: "$$vi.imageUrl" },
                   },
@@ -287,7 +396,11 @@ export const updateProductService = async ({
 };
 
 /* ----------------- GET ALL PRODUCTS ----------------- */
-export const getProductsService = async ({ page = 1, limit = 10, search = "" }) => {
+export const getProductsService = async ({
+  page = 1,
+  limit = 10,
+  search = "",
+}) => {
   page = parseInt(page);
   limit = parseInt(limit);
   const skip = (page - 1) * limit;
@@ -328,7 +441,13 @@ export const getProductsService = async ({ page = 1, limit = 10, search = "" }) 
                 $filter: {
                   input: "$variants",
                   as: "v",
-                  cond: { $regexMatch: { input: "$$v.sku", regex: search, options: "i" } },
+                  cond: {
+                    $regexMatch: {
+                      input: "$$v.sku",
+                      regex: search,
+                      options: "i",
+                    },
+                  },
                 },
               },
             },
@@ -359,10 +478,13 @@ export const getProductsService = async ({ page = 1, limit = 10, search = "" }) 
     /* ---------------- PROJECT OUTPUT ---------------- */
     {
       $project: {
-        id: "$_id",
+        _id: 0,
+        id: "$shiprocketProductId",
         title: "$name",
         body_html: "$description",
         vendor: "$brand",
+        handle: "$handle",
+        tags: "$tags",
         product_type: { $arrayElemAt: ["$category.name", 0] },
         created_at: "$createdAt",
         updated_at: "$updatedAt",
@@ -370,16 +492,23 @@ export const getProductsService = async ({ page = 1, limit = 10, search = "" }) 
 
         /* ---------------- PRODUCT IMAGES ---------------- */
         image: {
-          $map: {
-            input: {
-              $filter: {
-                input: "$images",
-                as: "img",
-                cond: { $eq: ["$$img.variantId", null] }, // product images
+          $let: {
+            vars: {
+              productImages: {
+                $filter: {
+                  input: "$images",
+                  as: "img",
+                  cond: { $eq: ["$$img.variantId", null] },
+                },
               },
             },
-            as: "i",
-            in: { src: "$$i.imageUrl" },
+            in: {
+              $cond: [
+                { $gt: [{ $size: "$$productImages" }, 0] },
+                { src: { $arrayElemAt: ["$$productImages.imageUrl", 0] } },
+                null,
+              ],
+            },
           },
         },
 
@@ -389,32 +518,41 @@ export const getProductsService = async ({ page = 1, limit = 10, search = "" }) 
             input: "$variants",
             as: "v",
             in: {
-              id: "$$v._id",
+              id: "$$v.shiprocketVariantId",
               title: { $concat: ["$$v.color", " / ", "$$v.size"] },
-              price: { $toString: "$$v.price" },
-              compare_at_price: null,
+              price: { $toString: "$$v.salePrice" },
+              compare_at_price: { $toString: "$$v.price" },
               sku: "$$v.sku",
               quantity: "$$v.stockQuantity",
               created_at: "$$v.createdAt",
               updated_at: "$$v.updatedAt",
               taxable: true,
-              grams: 0,
-              weight: 0,
-              weight_unit: "lb",
+              grams: { $multiply: ["$$v.weight", 1000] },
+              weight: "$$v.weight",
+              weight_unit: "kg",
               option_values: { Color: "$$v.color", Size: "$$v.size" },
 
               /* -------- VARIANT IMAGES -------- */
-              images: {
-                $map: {
-                  input: {
-                    $filter: {
-                      input: "$images",
-                      as: "img",
-                      cond: { $eq: ["$$img.variantId", "$$v._id"] },
+              image: {
+                $let: {
+                  vars: {
+                    variantImages: {
+                      $filter: {
+                        input: "$images",
+                        as: "img",
+                        cond: { $eq: ["$$img.variantId", "$$v._id"] },
+                      },
                     },
                   },
-                  as: "vi",
-                  in: { src: "$$vi.imageUrl" },
+                  in: {
+                    $cond: [
+                      { $gt: [{ $size: "$$variantImages" }, 0] },
+                      {
+                        src: { $arrayElemAt: ["$$variantImages.imageUrl", 0] },
+                      },
+                      null,
+                    ],
+                  },
                 },
               },
             },
@@ -434,17 +572,12 @@ export const getProductsService = async ({ page = 1, limit = 10, search = "" }) 
     { $limit: limit },
   ]);
 
-  // Pick first product image for main `image.src`
-  products.forEach(prod => {
-    prod.image = prod.image.length > 0 ? { src: prod.image[0].src } : null;
-  });
+  const data = { total, products };
 
   return {
-    total,
-    products,
+    data,
   };
 };
-
 
 /* ---------------- GET PRODUCT BY ID ---------------- */
 export const getProductByIdService = async (productId) => {
@@ -488,7 +621,7 @@ export const getProductByIdService = async (productId) => {
     // Project Shiprocket-ready format
     {
       $project: {
-        id: "$_id",
+        id: "$shiprocketProductId",
         title: "$name",
         body_html: "$description",
         vendor: "$brand",
@@ -500,12 +633,24 @@ export const getProductByIdService = async (productId) => {
           $reduce: {
             input: "$tags",
             initialValue: "",
-            in: { $cond: [{ $eq: ["$$value", ""] }, "$$this", { $concat: ["$$value", ", ", "$$this"] }] },
+            in: {
+              $cond: [
+                { $eq: ["$$value", ""] },
+                "$$this",
+                { $concat: ["$$value", ", ", "$$this"] },
+              ],
+            },
           },
         },
         image: {
           $map: {
-            input: { $filter: { input: "$images", as: "img", cond: { $eq: ["$$img.variantId", null] } } },
+            input: {
+              $filter: {
+                input: "$images",
+                as: "img",
+                cond: { $eq: ["$$img.variantId", null] },
+              },
+            },
             as: "i",
             in: { src: "$$i.imageUrl" },
           },
@@ -525,7 +670,13 @@ export const getProductByIdService = async (productId) => {
               option_values: { Color: "$$v.color", Size: "$$v.size" },
               images: {
                 $map: {
-                  input: { $filter: { input: "$images", as: "img", cond: { $eq: ["$$img.variantId", "$$v._id"] } } },
+                  input: {
+                    $filter: {
+                      input: "$images",
+                      as: "img",
+                      cond: { $eq: ["$$img.variantId", "$$v._id"] },
+                    },
+                  },
                   as: "vi",
                   in: { src: "$$vi.imageUrl" },
                 },
@@ -552,7 +703,10 @@ export const getProductByIdService = async (productId) => {
 };
 
 /* ---------------- DELETE PRODUCT (soft delete) ---------------- */
-export const deleteProductService = async ({ productId, hardDelete = false }) => {
+export const deleteProductService = async ({
+  productId,
+  hardDelete = false,
+}) => {
   if (!mongoose.Types.ObjectId.isValid(productId)) {
     throw new ApiError(400, "Invalid product ID");
   }
@@ -575,7 +729,11 @@ export const deleteProductService = async ({ productId, hardDelete = false }) =>
 
 /* ---------------- FEATURED PRODUCTS ---------------- */
 export const featuredProductsService = async (limit = 10) => {
-  const products = await Product.find({ isFeatured: true, isActive: true, isDeleted: false })
+  const products = await Product.find({
+    isFeatured: true,
+    isActive: true,
+    isDeleted: false,
+  })
     .populate({
       path: "defaultVariant",
     })
@@ -587,7 +745,7 @@ export const featuredProductsService = async (limit = 10) => {
     .limit(limit)
     .lean();
 
-  return products.map(p => ({
+  return products.map((p) => ({
     id: p._id,
     title: p.name,
     image: p.images?.[0]?.imageUrl || null,
@@ -611,7 +769,7 @@ export const popularProductsService = async (limit = 10) => {
     .limit(limit)
     .lean();
 
-  return products.map(p => ({
+  return products.map((p) => ({
     id: p._id,
     title: p.name,
     image: p.images?.[0]?.imageUrl || null,
@@ -619,12 +777,3 @@ export const popularProductsService = async (limit = 10) => {
     status: p.status,
   }));
 };
-
-
-
-
-
-
-
-
-

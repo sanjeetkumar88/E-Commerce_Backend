@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { generate16DigitId } from "../utils/numGen.js";
 
 const productSchema = new mongoose.Schema(
   {
@@ -15,6 +16,41 @@ const productSchema = new mongoose.Schema(
     },
 
     shortDescription: {
+      type: String,
+    },
+
+    shiprocketProductId: {
+      type: String,
+      index: true,
+      unique: true,
+      sparse: true,
+    },
+
+    craftmenshipDetails: {
+      type: String,
+    },
+    
+    luxeMaterials: {
+      type: String,
+    },
+
+    productSpecifications: {
+      type: String,
+    },
+
+    capacityAndDimensions: {
+      type: String,
+    },
+
+    stylingInspiration: {
+      type: String,
+    },
+
+    occasionsAndUsage: {
+      type: String,
+    },
+
+    careGuide: {
       type: String,
     },
 
@@ -65,11 +101,35 @@ const productSchema = new mongoose.Schema(
       default: "draft",
       index: true,
     },
+
+    handle: {
+      type: String,
+      unique: true,
+      trim: true,
+    },
   },
   {
     timestamps: true,
   }
 );
+
+
+/* -------------------------------------------------------------------------- */
+/*                                   PRE HOOKS                                */
+/* -------------------------------------------------------------------------- */
+
+productSchema.pre("save", async function () {
+  // Ensure only one default variant per product
+  if (this.isModified("isDefault") && this.isDefault) {
+    await mongoose.model("ProductVariant").updateMany(
+      { productId: this.productId, _id: { $ne: this._id } },
+      { isDefault: false }
+    );
+  }
+  if(!this.shiprocketProductId){
+    this.shiprocketProductId = generate16DigitId();
+  }
+});
 
 /* -------------------------------------------------------------------------- */
 /*                                   INDEXES                                   */
@@ -94,22 +154,6 @@ productSchema.index(
 );
 
 
-// Full-text search
-productSchema.index(
-  {
-    name: "text",
-    brand: "text",
-    tags: "text",
-  },
-  {
-    weights: {
-      name: 10,
-      brand: 5,
-      tags: 3,
-    },
-    name: "ProductTextSearchIndex",
-  }
-);
 
 /* -------------------------------------------------------------------------- */
 /*                                   VIRTUALS                                  */

@@ -3,39 +3,100 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 
 /* ---------------- CREATE PRODUCT + VARIANTS ---------------- */
+// export const createProduct = async (req, res, next) => {
+//   try {
+//     const {
+//       name,
+//       description,
+//       shortDescription,
+//       categoryId,
+//       brand,
+//       tags,
+//       isFeatured,
+//       isActive,
+//       variants
+//     } = req.body;
+
+//     // ✅ Remove JSON.parse if variants is already an array
+//     const variantList = Array.isArray(variants) ? variants : [];
+
+//     const result = await productService.createProductService({
+//       productData: { name, description, shortDescription, categoryId, brand, tags, isFeatured, isActive },
+//       variants: variantList
+//     });
+
+//     return res.status(201).json(new ApiResponse(true, "Product created successfully", result));
+//   } catch (err) {
+//     console.error(err);
+//     next(new ApiError(err.statusCode || 500, err.message || "Internal Server Error"));
+//   }
+// };
+
 export const createProduct = async (req, res, next) => {
   try {
     const {
       name,
       description,
       shortDescription,
+      craftmenshipDetails,
+      luxeMaterials,
+      productSpecifications,
+      capacityAndDimensions,
+      stylingInspiration,
+      occasionsAndUsage,
+      careGuide,
       categoryId,
       brand,
       tags,
       isFeatured,
       isActive,
-      variants
+      status,
+      variants,
     } = req.body;
 
-    // ✅ Remove JSON.parse if variants is already an array
+    if (!name || !categoryId) {
+      throw new ApiError(400, "Product name and category are required");
+    }
+    let handle = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
     const variantList = Array.isArray(variants) ? variants : [];
 
     const result = await productService.createProductService({
-      productData: { name, description, shortDescription, categoryId, brand, tags, isFeatured, isActive },
-      variants: variantList
+      productData: {
+        name,
+        description,
+        shortDescription,
+        craftmenshipDetails,
+        luxeMaterials,
+        productSpecifications,
+        capacityAndDimensions,
+        stylingInspiration,
+        occasionsAndUsage,
+        careGuide,
+        categoryId, 
+        brand,
+        tags,
+        handle,
+        isFeatured: isFeatured ?? false,
+        isActive: isActive ?? true,
+        status: status ?? "draft",
+      },
+      variants: variantList,
     });
 
-    return res.status(201).json(new ApiResponse(true, "Product created successfully", result));
+    return res
+      .status(201)
+      .json(new ApiResponse(true, "Product created successfully", result));
   } catch (err) {
     console.error(err);
-    next(new ApiError(err.statusCode || 500, err.message || "Internal Server Error"));
+    next(new ApiError(err.statusCode || 500, err.message));
   }
 };
 
 /* ---------------- UPLOAD IMAGES ---------------- */
 export const uploadProductImages = async (req, res, next) => {
   try {
-    const { productId } = req.params;
+    const { productId} = req.params;
 
     const result = await productService.uploadProductImagesService({
       productId,
@@ -44,7 +105,7 @@ export const uploadProductImages = async (req, res, next) => {
 
     return res
       .status(201)
-      .json(new ApiResponse(201, result, "Images uploaded successfully"));
+      .json(new ApiResponse(true, "Images uploaded successfully", result));
   } catch (error) {
     next(error); // 🔥 central error handler
   }
@@ -88,10 +149,10 @@ export const updateProduct = async (req, res, next) => {
 export const getProducts = async (req, res, next) => {
   try {
     const result = await productService.getProductsService(req.query);
-
+    
     return res
       .status(200)
-      .json(new ApiResponse(true, "Products fetched successfully", result));
+      .json(result);
   } catch (err) {
     next(err);
   }

@@ -17,7 +17,7 @@ export const getProductsByCategory = async (req, res, next) => {
        }
     );
 
-    res.status(200).json(new ApiResponse(200, products));
+    res.status(200).json(products);
   } catch (error) {
     next(error);
   }
@@ -87,24 +87,11 @@ export const getAllCategories = async (req, res, next) => {
 
     const result = await categoryService.getAllCategories({ page, limit });
 
-    return res.status(200).json(new ApiResponse(true, "Categories fetched successfully", result));
+    return res.status(200).json(result);
   } catch (err) {
     next(err);
   }
 };
-
-/* -------------------- GET BY ID -------------------- */
-export const getCategoryById = async (req, res, next) => {
-  try {
-    const category = await categoryService.getCategoryById(req.params.id);
-    res
-      .status(200)
-      .json(new ApiResponse(200, category, "Category fetched successfully"));
-  } catch (error) {
-    next(error);
-  }
-};
-
 
 /* -------------------- DELETE -------------------- */
 export const deleteCategory = async (req, res, next) => {

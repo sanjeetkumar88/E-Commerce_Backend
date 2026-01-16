@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { Product } from "./product.model.js";
 import { generateSKU } from "../utils/sku.js";
+import { generate16DigitId } from "../utils/numGen.js"; 
 
 const productVariantSchema = new mongoose.Schema(
   {
@@ -9,6 +10,13 @@ const productVariantSchema = new mongoose.Schema(
       ref: "Product",
       required: true,
       index: true,
+    },
+
+    shiprocketVariantId: {
+      type: String,
+      index: true,
+      unique: true,
+      sparse: true,
     },
 
     color: {
@@ -34,12 +42,10 @@ const productVariantSchema = new mongoose.Schema(
       min: 0,
     },
 
-    discountedPrice: {
+    salePrice: {
       type: Number,
       min: 0,
     },
-
-    salePrice: Number,
 
     stockQuantity: {
       type: Number,
@@ -64,6 +70,24 @@ const productVariantSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+
+    weight: {
+      type: Number,
+    },
+    dimensions: {
+      length: Number,
+      width: Number,
+      height: Number,
+    },
+    hsnCode: {
+      type: String,
+      trim: true,
+    },
+
+    taxRate: {
+      type: Number,
+      min: 0,
+    },
   },
   { timestamps: true }
 );
@@ -85,24 +109,26 @@ productVariantSchema.pre("save", async function () {
   }
 
   /* ---------------- PRICE SYNC ---------------- */
-  if (this.discountedPrice != null) {
-    if (this.discountedPrice >= this.price) {
-      throw new Error("Discounted price must be less than actual price");
-    }
-    this.salePrice = this.discountedPrice;
-  } else {
-    this.salePrice = undefined;
+if (this.salePrice != null) {
+  if (this.salePrice >= this.price) {
+    throw new Error("Sale price must be less than actual price");
   }
+} else {
+  this.salePrice = undefined;
+}
 
   /* ---------------- SKU GENERATION ---------------- */
 
   
   if (!this.sku) {
-    const product = await Product.findById(this.productId).select("name");
+
+    const product = await Product.findById(this.productId).select("name").session(this.$session());
+
     if (!product) {
       throw new Error("Product not found for SKU generation");
     }
      const productName = product.name;
+     console.log("Product Name for SKU Generation:", productName);
     if (typeof productName !== "string") {
       throw new Error(`Invalid product name: expected string but got ${typeof productName}`);
     }
@@ -121,6 +147,10 @@ productVariantSchema.pre("save", async function () {
         this.sku = sku;
       }
     }
+  }
+
+  if(!this.shiprocketVariantId) {
+    this.shiprocketVariantId = generate16DigitId();
   }
 });
 

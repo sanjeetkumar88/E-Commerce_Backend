@@ -1,16 +1,23 @@
 import mongoose from "mongoose";
+import { generate9DigitId } from "../utils/numGen.js";
 
 const categorySchema = new mongoose.Schema(
   {
     name: {
       type: String,
       required: true,
+      unique: true,
       maxlength: 100,
     },
-    slug: {
+    shiprocketCategoryId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    handle: {
       type: String,
       required: true,
-      unique: true,
       maxlength: 100,
     },
     description: {
@@ -45,5 +52,15 @@ const categorySchema = new mongoose.Schema(
     timestamps: true,
   },
 );
+
+categorySchema.pre('save', function () {
+
+  if (!this.shiprocketCategoryId) {
+    this.shiprocketCategoryId = generate9DigitId();
+  }
+  if (!this.handle) {
+    this.handle = this.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  }
+});
 
 export const Category = mongoose.model('Category', categorySchema);
