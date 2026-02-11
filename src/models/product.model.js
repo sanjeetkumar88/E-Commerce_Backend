@@ -147,6 +147,12 @@ productSchema.index({ isActive: 1, isDeleted: 1 });
 // Brand filtering
 productSchema.index({ brand: 1, status: 1 });
 
+productSchema.index({status: 1, isDeleted: 1});
+productSchema.index({createdAt: -1});
+productSchema.index({name: "text"});
+
+
+
 // Text search index
 productSchema.index(
   { name: "text", brand: "text", tags: "text" },

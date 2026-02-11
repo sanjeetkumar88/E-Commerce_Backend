@@ -1,435 +1,357 @@
-// services/cart.service.js
-import { Cart } from "../models/cart.model.js";
-import { CartItem } from "../models/cart.model.js";
-import { ApiError } from "../utils/ApiError.js";
-import { Product } from "../models/product.model.js";
+import mongoose from "mongoose";
+import { Cart, CartItem } from "../models/cart.model.js";
 import { ProductVariant } from "../models/productVarient.model.js";
 import { ProductImage } from "../models/productImage.model.js";
+import { ApiError } from "../utils/ApiError.js";
 
-/* ---------------- GET OR CREATE CART ---------------- */
-export const getOrCreateCart = async (userId) => {
-  let cart = await Cart.findOne({ userId, isActive: true });
-  if (!cart) {
-    cart = await Cart.create({ userId });
-  }
-  return cart;
-};
-
-/* ---------------- ADD TO CART ---------------- */
-// export const addToCartService = async ({
-//   userId,
-//   productId,
-//   variantId,
-//   quantity = 1,
-//   price,
-// }) => {
-//   const cart = await getOrCreateCart(userId);
-
-//   const cartItem = await CartItem.findOneAndUpdate(
-//     {
-//       cartId: cart._id,
-//       productId,
-//       variantId: variantId || null,
-//     },
-//     {
-//       $inc: { quantity },
-//       $setOnInsert: { price },
-//     },
-//     {
-//       new: true,
-//       upsert: true,
-//     }
-//   );
-
-//   return cartItem;
-// };
-
-// export const addToCartService = async ({
-//   userId,
-//   productId,
-//   variantId,
-//   quantity = 1,
-// }) => {
-//   if (quantity < 1) {
-//     throw new ApiError(400, "Quantity must be at least 1");
-//   }
-
-//   /* ---------------- PRODUCT VALIDATION ---------------- */
-//   const product = await Product.findOne({
-//     _id: productId,
-//     isActive: true,
-//     isDeleted: false,
-//   });
-
-//   if (!product) {
-//     throw new ApiError(404, "Product not found");
-//   }
-
-//   /* ---------------- VARIANT VALIDATION ---------------- */
-//   let price = product.salePrice ?? product.price;
-//   let availableStock = product.stockQuantity;
-
-//   if (variantId) {
-//     const variant = await ProductVariant.findOne({
-//       _id: variantId,
-//       productId,
-//       isActive: true,
-//     });
-
-//     if (!variant) {
-//       throw new ApiError(404, "Product variant not found");
-//     }
-
-//     price = variant.price;
-//     availableStock = variant.stockQuantity;
-//   }
-
-//   /* ---------------- STOCK CHECK ---------------- */
-//   if (availableStock < quantity) {
-//     throw new ApiError(
-//       409,
-//       `Only ${availableStock} item(s) available in stock`
-//     );
-//   }
-
-//   /* ---------------- GET / CREATE CART ---------------- */
-//   const cart = await getOrCreateCart(userId);
-
-//   /* ---------------- UPSERT CART ITEM ---------------- */
-//   const cartItem = await CartItem.findOneAndUpdate(
-//     {
-//       cartId: cart._id,
-//       productId,
-//       variantId: variantId || null,
-//     },
-//     {
-//       $inc: { quantity },
-//       $setOnInsert: { price },
-//     },
-//     {
-//       new: true,
-//       upsert: true,
-//     }
-//   );
-
-//   /* ---------------- FINAL QUANTITY VALIDATION ---------------- */
-//   if (cartItem.quantity > availableStock) {
-//     await CartItem.findByIdAndDelete(cartItem._id);
-//     throw new ApiError(409, `Cannot add more than ${availableStock} item(s)`);
-//   }
-
-//   return cartItem;
-// };
-
-export const addToCartService = async ({
+export const addToCart = async (
   userId,
   productId,
   variantId,
-  quantity = 1,
-}) => {
-  if (quantity < 1) {
+  quantity = 1
+) => {
+  if (!mongoose.Types.ObjectId.isValid(productId))
+    throw new ApiError(400, "Invalid product ID");
+
+  if (!mongoose.Types.ObjectId.isValid(variantId))
+    throw new ApiError(400, "Invalid variant ID");
+
+  if (quantity < 1)
     throw new ApiError(400, "Quantity must be at least 1");
-  }
 
-  /* ---------------- PRODUCT VALIDATION ---------------- */
-  const product = await Product.findOne({
-    _id: productId,
-    isActive: true,
-    isDeleted: false,
-  });
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
+  try {
+    let cart = await Cart.findOne({ userId }).session(session);
 
-  if (!product) {
-    throw new ApiError(404, "Product not found");
-  }
+    if (!cart) {
+      cart = await Cart.create([{ userId }], { session });
+      cart = cart[0];
+    }
 
-  let price = product.salePrice ?? product.price;
-  let availableStock;
-  if(!product.hasVariants){
-  availableStock = product.stockQuantity;
-  }
-
-  /* ---------------- VARIANT VALIDATION ---------------- */
-  if (variantId) {
     const variant = await ProductVariant.findOne({
       _id: variantId,
-      productId,
       isActive: true,
-    });
+    })
+      .populate("productId")
+      .session(session);
 
-
-
-    if (!variant) {
+    if (!variant)
       throw new ApiError(404, "Product variant not found");
-    }
 
-    // Stock check from variant
-    console.log(variant);
-    
-    availableStock = variant.stockQuantity;
+    if (variant.stockQuantity < quantity)
+      throw new ApiError(
+        400,
+        `Only ${variant.stockQuantity} items left in stock`
+      );
 
-    // Price calculation with priceAdjustment
-    if (variant.priceAdjustment && variant.priceAdjustment !== 0) {
-      price = (product.salePrice ?? product.price) + variant.priceAdjustment;
-    } else {
-      price = product.salePrice ?? product.price;
-    }
-  }
+    const price = variant.salePrice ?? variant.price;
 
-  /* ---------------- STOCK CHECK ---------------- */
-  if (availableStock < quantity) {
-    throw new ApiError(
-      409,
-      `Only ${availableStock} item(s) available in stock`
-    );
-  }
-
-  /* ---------------- GET / CREATE CART ---------------- */
-  const cart = await getOrCreateCart(userId);
-
-  /* ---------------- UPSERT CART ITEM ---------------- */
-  const cartItem = await CartItem.findOneAndUpdate(
-    {
+    const existingItem = await CartItem.findOne({
       cartId: cart._id,
       productId,
-      variantId: variantId || null,
-    },
-    {
-      $inc: { quantity },
-      $setOnInsert: { price },
-    },
-    {
-      new: true,
-      upsert: true,
+      variantId,
+    }).session(session);
+
+    if (existingItem) {
+      const newQty = existingItem.quantity + quantity;
+
+      if (variant.stockQuantity < newQty)
+        throw new ApiError(
+          400,
+          `Only ${variant.stockQuantity} items available`
+        );
+
+      existingItem.quantity = newQty;
+      existingItem.price = mongoose.Types.Decimal128.fromString(
+        price.toString()
+      );
+
+      await existingItem.save({ session });
+    } else {
+      await CartItem.create(
+        [
+          {
+            cartId: cart._id,
+            productId,
+            variantId,
+            quantity,
+            price: mongoose.Types.Decimal128.fromString(
+              price.toString()
+            ),
+            productName: variant.productId.name,
+            variantName:
+              `${variant.color || ""} ${variant.size || ""}`.trim() ||
+              "Standard",
+            sku: variant.sku,
+          },
+        ],
+        { session }
+      );
     }
-  );
 
-  /* ---------------- FINAL QUANTITY VALIDATION ---------------- */
-  if (cartItem.quantity > availableStock) {
-    await CartItem.findByIdAndDelete(cartItem._id);
-    throw new ApiError(409, `Cannot add more than ${availableStock} item(s)`);
+    await session.commitTransaction();
+    session.endSession();
+
+    return { success: true, message: "Added to cart" };
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    throw err instanceof ApiError
+      ? err
+      : new ApiError(500, "Failed to add to cart");
   }
-
-  return cartItem;
 };
 
-/* -------------------------------------------------------------------------- */
-/*                              APPLY COUPON                                   */
-/* -------------------------------------------------------------------------- */
-const applyCoupon = async (couponCode, subtotal) => {
-  if (!couponCode) return 0;
 
-  // Example coupons (replace with Coupon model later)
-  if (couponCode === "SAVE10" && subtotal >= 1000) {
-    return 100;
-  }
-
-  if (couponCode === "SAVE20" && subtotal >= 2000) {
-    return 200;
-  }
-
-  return 0;
-};
-
-/* -------------------------------------------------------------------------- */
-/*                       GET CART WITH TAX + SHIPPING                            */
-/* -------------------------------------------------------------------------- */
-
-export const getCartService = async (userId, couponCode = null) => {
-  const cart = await Cart.findOne({ userId, isActive: true });
+export const getCart = async (userId, userState = "IN") => {
+  const cart = await Cart.findOne({ userId });
 
   if (!cart) {
     return {
       items: [],
-      summary: {
-        subtotal: 0,
-        tax: 0,
-        discount: 0,
-        shipping: 0,
-        grandTotal: 0,
-      },
-      canCheckout: false,
+      subtotal: 0,
+      totalTax: 0,
+      discount: 0,
+      grandTotal: 0,
     };
   }
 
   const cartItems = await CartItem.find({ cartId: cart._id })
     .populate({
-      path: "productId",
-      select: "name price salePrice stockQuantity isActive status",
-    })
-    .populate({
       path: "variantId",
-      select: "sku stockQuantity isActive",
+      populate: { path: "productId" },
     });
 
-  /* ---------------- FETCH IMAGES ---------------- */
-  const productIds = cartItems.map((i) => i.productId?._id);
-  const variantIds = cartItems.map((i) => i.variantId).filter(Boolean);
-
-  const images = await ProductImage.find({
-    $or: [
-      { productId: { $in: productIds }, variantId: null },
-      { variantId: { $in: variantIds } },
-    ],
-  });
-
-  /* ---------------- IMAGE MAP ---------------- */
-  const imageMap = new Map();
-
-  images.forEach((img) => {
-    const key = img.variantId ? `v_${img.variantId}` : `p_${img.productId}`;
-
-    if (!imageMap.has(key)) {
-      imageMap.set(key, img.imageUrl);
-    }
-  });
-
   let subtotal = 0;
-  let canCheckout = true;
+  let totalTax = 0;
+  let totalDiscount = 0;
 
-  const items = cartItems.map((item) => {
-    const product = item.productId;
+
+  const formattedItems = [];
+
+  for (const item of cartItems) {
     const variant = item.variantId;
+    const product = variant?.productId;
 
-    if (!product || !product.isActive) {
-      canCheckout = false;
-      return {
-        cartItemId: item._id,
-        productId: null,
-        name: "Product unavailable",
-        quantity: item.quantity,
-        price: 0,
-        subtotal: 0,
-        availableStock: 0,
-        inStock: false,
-        image: null,
-      };
+    if (!variant || !product || !variant.isActive || product.isDeleted) {
+      continue;
     }
 
-    // const unitPrice = product.salePrice ?? product.price;
-    const unitPrice = variant?.price ?? product.salePrice ?? product.price;
+    /* ---------------- IMAGE LOGIC ---------------- */
 
-    const itemSubtotal = unitPrice * item.quantity;
+    console.log("Fetching image for variant:", variant._id);
+
+    let image = await ProductImage.findOne({
+      variantId: variant._id,
+      productId: variant.productId._id,
+    }).lean();
+
+
+    if (!image) {
+      image = await ProductImage.findOne({
+        productId: variant.productId._id,
+        variantId: null,
+      }).lean();
+    }
+
+    /* ---------------- PRICE REFRESH ---------------- */
+
+    const currentPrice = variant.salePrice ?? variant.price;
+
+    if (parseFloat(item.price.toString()) !== currentPrice) {
+      item.price = mongoose.Types.Decimal128.fromString(
+        currentPrice.toString()
+      );
+      await item.save();
+    }
+
+    const quantity = item.quantity;
+
+    /* ---------------- STOCK ---------------- */
+
+    const stockWarning =
+      variant.stockQuantity < quantity
+        ? `Only ${variant.stockQuantity} left`
+        : null;
+
+    /* ---------------- CALCULATIONS ---------------- */
+
+    const itemSubtotal = currentPrice * quantity;
+
+    const taxRate = variant.taxRate || 0;
+    const taxAmount = (itemSubtotal * taxRate) / 100;
+
+    const savings =
+      variant.salePrice && variant.salePrice < variant.price
+        ? (variant.price - variant.salePrice) * quantity
+        : 0;
+
     subtotal += itemSubtotal;
+    totalTax += taxAmount;
+    totalDiscount += savings;
 
-    const inStock =
-      product.stockQuantity >= item.quantity && product.status === "active";
-
-    if (!inStock) canCheckout = false;
-
-    /* ---------------- IMAGE RESOLUTION ---------------- */
-    let image = null;
-
-    if (item.variantId && imageMap.has(`v_${item.variantId}`)) {
-      image = imageMap.get(`v_${item.variantId}`);
-    } else if (imageMap.has(`p_${product._id}`)) {
-      image = imageMap.get(`p_${product._id}`);
-    }
-
-    return {
-      cartItemId: item._id,
+    formattedItems.push({
+      _id: item._id,
       productId: product._id,
-      variantId: item.variantId || null,
-      name: product.name,
-      sku: variant?.sku || product.sku,
-      image,
-      price: unitPrice,
-      quantity: item.quantity,
-      subtotal: itemSubtotal,
-      availableStock: product.stockQuantity,
-      inStock,
-    };
-  });
+      variantId: variant._id,
+      handle: product.handle,
+      name: item.productName,
+      sku: item.sku,
+      quantity,
+      price: currentPrice,
+      compareAtPrice: variant.price,
+      savings,
+      stockWarning,
+      color: variant.color,
+      size: variant.size,
+      stock: variant.stockQuantity,
+      image: image?.imageUrl || null,
 
-  /* ---------------- TAX & SHIPPING ---------------- */
-  const tax = Math.round(subtotal * 0.18);
-  const shipping = subtotal >= 1000 ? 0 : 50;
+      tax: {
+        rate: taxRate,
+        amount: taxAmount,
+        ...(userState === "IN"
+          ? {
+              cgst: taxAmount / 2,
+              sgst: taxAmount / 2,
+            }
+          : {
+              igst: taxAmount,
+            }),
+      },
 
-  /* ---------------- COUPON ---------------- */
-  const discount = await applyCoupon(couponCode, subtotal);
+      itemSubtotal,
+      itemTotal: itemSubtotal + taxAmount,
+    });
+  }
 
-  const grandTotal = Math.max(subtotal + tax + shipping - discount, 0);
+  const grandTotal = subtotal + totalTax;
 
   return {
-    items,
-    summary: {
-      subtotal,
-      tax,
-      discount,
-      shipping,
-      grandTotal,
-    },
-    canCheckout,
+    items: formattedItems,
+    subtotal,
+    totalTax,
+    discount: totalDiscount,
+    grandTotal,
   };
 };
 
-/* ---------------- UPDATE QUANTITY ---------------- */
-export const updateCartItemQtyService = async ({
-  userId,
-  cartItemId,
-  quantity,
-}) => {
-  if (quantity < 1) {
+
+export const updateCartQuantity = async (cartItemId, quantity) => {
+  if (!mongoose.Types.ObjectId.isValid(cartItemId))
+    throw new ApiError(400, "Invalid cart item ID");
+
+  if (quantity < 1)
     throw new ApiError(400, "Quantity must be at least 1");
-  }
 
-  const cart = await Cart.findOne({ userId, isActive: true });
-  if (!cart) throw new ApiError(404, "Cart not found");
+  const item = await CartItem.findById(cartItemId).populate("variantId");
 
-  const item = await CartItem.findOneAndUpdate(
-    { _id: cartItemId, cartId: cart._id },
-    { quantity },
-    { new: true }
-  );
+  if (!item)
+    throw new ApiError(404, "Cart item not found");
 
-  if (!item) throw new ApiError(404, "Cart item not found");
+  if (!item.variantId || !item.variantId.isActive)
+    throw new ApiError(400, "Variant is inactive");
 
-  return item;
+  if (item.variantId.stockQuantity < quantity)
+    throw new ApiError(
+      400,
+      `Only ${item.variantId.stockQuantity} available`
+    );
+
+  item.quantity = quantity;
+  await item.save();
+
+  return { success: true };
 };
 
-/* ---------------- REMOVE ITEM ---------------- */
-export const removeCartItemService = async ({ userId, cartItemId }) => {
-  const cart = await Cart.findOne({ userId, isActive: true });
-  if (!cart) throw new ApiError(404, "Cart not found");
 
-  const removed = await CartItem.findOneAndDelete({
-    _id: cartItemId,
-    cartId: cart._id,
-  });
+export const removeCartItem = async (cartItemId) => {
+  if (!mongoose.Types.ObjectId.isValid(cartItemId))
+    throw new ApiError(400, "Invalid cart item ID");
 
-  if (!removed) throw new ApiError(404, "Cart item not found");
+  const item = await CartItem.findByIdAndDelete(cartItemId);
 
-  return removed;
+  if (!item)
+    throw new ApiError(404, "Cart item not found");
+
+  return { success: true };
 };
 
-/* -------------------------------------------------------------------------- */
-/*                   MERGE GUEST CART AFTER LOGIN                               */
-/* -------------------------------------------------------------------------- */
-export const mergeGuestCartService = async (userId, guestItems = []) => {
-  await session.withTransaction(async () => {
-    if (!guestItems.length) return;
+export const mergeGuestCartService = async (
+  userId,
+  guestItems = []
+) => {
+  if (!Array.isArray(guestItems))
+    throw new ApiError(400, "Invalid guest cart format");
 
-    const cart = await getOrCreateCart(userId);
+  if (!guestItems.length)
+    return { message: "No guest items to merge" };
 
-    for (const item of guestItems) {
-      const existing = await CartItem.findOne({
-        cartId: cart._id,
-        productId: item.productId,
-        variantId: item.variantId || null,
-      });
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-      if (existing) {
-        existing.quantity += item.quantity;
-        await existing.save();
-      } else {
-        await CartItem.create({
-          cartId: cart._id,
-          productId: item.productId,
-          variantId: item.variantId || null,
-          quantity: item.quantity,
-          price: item.price,
-        });
-      }
+  try {
+    let cart = await Cart.findOne({ userId }).session(session);
+
+    if (!cart) {
+      cart = await Cart.create([{ userId }], { session });
+      cart = cart[0];
     }
-  });
+
+    for (const guestItem of guestItems) {
+      const { productId, variantId, quantity } = guestItem;
+
+      if (!variantId || quantity < 1) continue;
+
+      const variant = await ProductVariant.findById(variantId)
+        .populate("productId")
+        .session(session);
+
+      if (!variant || !variant.isActive) continue;
+
+      const availableStock = variant.stockQuantity;
+      if (availableStock <= 0) continue;
+
+      const finalQty = Math.min(quantity, availableStock);
+      const currentPrice = variant.salePrice ?? variant.price;
+
+      await CartItem.findOneAndUpdate(
+        { cartId: cart._id, productId, variantId },
+        {
+          $inc: { quantity: finalQty },
+          $set: {
+            price: mongoose.Types.Decimal128.fromString(
+              currentPrice.toString()
+            ),
+            productName: variant.productId.name,
+            variantName:
+              `${variant.color || ""} ${variant.size || ""}`.trim() ||
+              "Standard",
+            sku: variant.sku,
+            isActive: true,
+          },
+        },
+        { upsert: true, new: true, session }
+      );
+    }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return {
+      success: true,
+      message: "Guest cart merged successfully",
+      cartId: cart._id,
+    };
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    throw error instanceof ApiError
+      ? error
+      : new ApiError(500, "Failed to merge guest cart");
+  }
 };
+
+

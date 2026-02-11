@@ -6,28 +6,6 @@ import { ApiError } from "../utils/ApiError.js";
 import { uploadBufferToCloudinary } from "../utils/cloudinary.js";
 
 /* ---------------- CREATE PRODUCT + VARIANTS ---------------- */
-// export const createProductService = async ({ productData, variants = [] }) => {
-//   // 1. Create the product
-//   const product = await Product.create(productData);
-
-//   // 2. Create variants
-//   const variantDocs = [];
-//   for (const variant of variants) {
-//     try {
-//       const variantDoc = await ProductVariant.create({
-//         ...variant,
-//         productId: product._id,
-//       });
-//       variantDocs.push(variantDoc);
-//     } catch (err) {
-//       // Rollback if variant fails
-//       await Product.findByIdAndDelete(product._id);
-//       throw new ApiError(400, `Variant creation failed: ${err.message}`);
-//     }
-//   }
-
-//   return { product, variants: variantDocs };
-// };
 
 export const createProductService = async ({ productData, variants = [] }) => {
   const session = await mongoose.startSession();
@@ -395,311 +373,586 @@ export const updateProductService = async ({
   }
 };
 
-/* ----------------- GET ALL PRODUCTS ----------------- */
-export const getProductsService = async ({
+/* ----------------- GET ALL PRODUCTS SHIPROCKET ----------------- */
+export const getProductsShipRocketService = async ({
   page = 1,
   limit = 10,
   search = "",
 }) => {
-  page = parseInt(page);
-  limit = parseInt(limit);
-  const skip = (page - 1) * limit;
+  const sanitizedPage = Math.max(1, parseInt(page) || 1);
+  const sanitizedLimit = Math.max(1, parseInt(limit) || 10);
+  const skip = (sanitizedPage - 1) * sanitizedLimit;
 
   // Base match query
   const matchQuery = { isDeleted: false };
 
-  // 🔎 Full-text search
+  // 🔎 Full-text search (Optimized for indexes)
   if (search && search.trim() !== "") {
     matchQuery.$or = [
-      { $text: { $search: search } }, // text search on name, description, tags
+      { name: new RegExp(search.trim(), "i") },
+      { description: new RegExp(search.trim(), "i") },
+      { tags: new RegExp(search.trim(), "i") },
     ];
   }
 
-  // Count total matching documents
-  const total = await Product.countDocuments(matchQuery);
+  // Execute Count and Aggregation in parallel for Production speed
+  const [total, products] = await Promise.all([
+    Product.countDocuments(matchQuery),
+    Product.aggregate([
+      { $match: matchQuery },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: sanitizedLimit },
 
-  // Aggregation pipeline
-  const products = await Product.aggregate([
-    { $match: matchQuery },
-
-    /* ---------------- VARIANTS ---------------- */
-    {
-      $lookup: {
-        from: "productvariants",
-        localField: "_id",
-        foreignField: "productId",
-        as: "variants",
+      /* ---------------- LOOKUPS ---------------- */
+      {
+        $lookup: {
+          from: "productvariants",
+          localField: "_id",
+          foreignField: "productId",
+          as: "variants",
+        },
       },
-    },
+      {
+        $lookup: {
+          from: "productimages",
+          localField: "_id",
+          foreignField: "productId",
+          as: "images",
+        },
+      },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "categoryId",
+          foreignField: "_id",
+          as: "category",
+        },
+      },
 
-    // Optional: filter variants by SKU search if needed
-    ...(search
-      ? [
-          {
-            $addFields: {
-              variants: {
-                $filter: {
-                  input: "$variants",
-                  as: "v",
-                  cond: {
-                    $regexMatch: {
-                      input: "$$v.sku",
-                      regex: search,
-                      options: "i",
+      /* ---------------- PROJECT OUTPUT (Unified Format) ---------------- */
+      {
+        $project: {
+          _id: 1,
+          id: "$shiprocketProductId",
+          title: "$name",
+          body_html: "$description",
+          vendor: "$brand",
+          product_type: { $arrayElemAt: ["$category.name", 0] },
+          handle: "$handle",
+          updated_at: "$updatedAt",
+          tags: {
+            $reduce:{
+              input: {$ifNull: ["$tags", []]},
+              initialValue: "",
+              in: {
+                $cond: [
+                  { $eq: ["$$value", ""] },
+                  "$$this",
+                  { $concat: ["$$value", ", ", "$$this"] }
+                ]
+              }
+            }
+          },
+          status: "$status",
+          created_at: "$createdAt",
+          
+          // Primary Image Mapping
+          image: {
+            $let: {
+              vars: {
+                productImages: {
+                  $filter: {
+                    input: "$images",
+                    as: "img",
+                    cond: { $eq: ["$$img.variantId", null] },
+                  },
+                },
+              },
+              in: {
+                $cond: [
+                  { $gt: [{ $size: "$$productImages" }, 0] },
+                  { src: { $arrayElemAt: ["$$productImages.imageUrl", 0] } },
+                  null,
+                ],
+              },
+            },
+          },
+
+          // Variants Mapping
+          variants: {
+            $map: {
+              input: "$variants",
+              as: "v",
+              in: {
+                _id: "$$v._id",
+                id: "$$v.shiprocketVariantId",
+                title: { $concat: ["$$v.color", " / ", "$$v.size"] },
+                price: { $toString: "$$v.salePrice" },
+                compare_at_price: { $toString: "$$v.price" },
+                sku: "$$v.sku",
+                quantity: "$$v.stockQuantity",
+                weight: { $divide: ["$$v.weight", 1000] }, // Convert grams to kg
+                weight_unit: "kg",
+                option_values: { Color: "$$v.color", Size: "$$v.size" },
+                grams: "$$v.weight",
+                taxable: { $cond: [{$gt: ["$$v.taxRate", 0]}, true, false] },
+                image: {
+                  $let: {
+                    vars: {
+                      vImg: {
+                        $filter: {
+                          input: "$images",
+                          as: "img",
+                          cond: { $eq: ["$$img.variantId", "$$v._id"] },
+                        },
+                      },
+                    },
+                    in: {
+                      $cond: [
+                        { $gt: [{ $size: "$$vImg" }, 0] },
+                        { src: { $arrayElemAt: ["$$vImg.imageUrl", 0] } },
+                        null,
+                      ],
                     },
                   },
                 },
               },
             },
           },
+
+          // Options Mapping
+          options: [
+            { 
+              name: "Color", 
+              values: { 
+                $filter: { 
+                  input: { $setUnion: ["$variants.color"] }, 
+                  cond: { $ne: ["$$this", null] } 
+                } 
+              } 
+            },
+            { 
+              name: "Size", 
+              values: { 
+                $filter: { 
+                  input: { $setUnion: ["$variants.size"] }, 
+                  cond: { $ne: ["$$this", null] } 
+                } 
+              } 
+            },
+          ],
+        },
+      },
+    ]),
+  ]);
+
+  // Unified Output Format: matching getAllCategories
+  return {
+    data: {
+      total,
+      collections: products, // Renamed from products to collections for consistency
+    },
+  };
+};
+
+/* ----------------- GET PRODUCT LIST ----------------- */
+export const getProductListService = async ({
+  page = 1,
+  limit = 12,
+  search = "",
+  sort = "newest", // newest | priceLow | priceHigh
+  colors = [],
+  sizes = [],
+  isFeatured = false,
+}) => {
+  const sanitizedPage = Math.max(1, parseInt(page) || 1);
+  const sanitizedLimit = Math.min(50, Math.max(1, parseInt(limit) || 12)); // cap limit for safety
+  const skip = (sanitizedPage - 1) * sanitizedLimit;
+
+  // Base match (INDEXED)
+  const baseMatch = {
+    isDeleted: false,
+    status: "active",
+    ...(isFeatured && { isFeatured: true }),
+  };
+
+  if (search?.trim()) {
+    baseMatch.$text = { $search: search.trim() };
+  }
+
+  // Sorting Logic
+  let sortStage = { createdAt: -1 };
+  if (sort === "priceLow") sortStage = { sortPrice: 1 };
+  if (sort === "priceHigh") sortStage = { sortPrice: -1 };
+
+  const pipeline = [
+
+    /* 1️ MATCH BASE FILTER */
+    { $match: baseMatch },
+
+    /* 2️ LOOKUP FILTERED VARIANTS  */
+    {
+      $lookup: {
+        from: "productvariants",
+        let: { pid: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$productId", "$$pid"] },
+              isActive: true,
+              stockQuantity: { $gt: 0 },
+              ...(colors.length > 0 && { color: { $in: colors } }),
+              ...(sizes.length > 0 && { size: { $in: sizes } })
+            }
+          },
+          {
+            $project: {
+              price: 1,
+              salePrice: 1,
+              sku: 1,
+              stockQuantity: 1,
+              isDefault: 1
+            }
+          }
+        ],
+        as: "variants"
+      }
+    },
+
+    /* 3️ REMOVE PRODUCTS WITHOUT MATCHING VARIANTS */
+    { $match: { "variants.0": { $exists: true } } },
+
+    /* 4️ FIND DEFAULT VARIANT */
+    {
+      $addFields: {
+        defaultVariant: {
+          $ifNull: [
+            {
+              $arrayElemAt: [
+                {
+                  $filter: {
+                    input: "$variants",
+                    as: "v",
+                    cond: { $eq: ["$$v.isDefault", true] }
+                  }
+                },
+                0
+              ]
+            },
+            { $arrayElemAt: ["$variants", 0] }
+          ]
+        }
+      }
+    },
+
+    /* 5️ COMPUTE SAFE SORT PRICE */
+    {
+      $addFields: {
+        sortPrice: {
+          $ifNull: [
+            "$defaultVariant.salePrice",
+            "$defaultVariant.price"
+          ]
+        }
+      }
+    },
+
+    /* 6️ LOOKUP CATEGORY (Lightweight) */
+    {
+      $lookup: {
+        from: "categories",
+        localField: "categoryId",
+        foreignField: "_id",
+        pipeline: [{ $project: { name: 1 } }],
+        as: "category"
+      }
+    },
+
+    /* 7️ LOOKUP PRIMARY IMAGE (ONLY 1) */
+    {
+      $lookup: {
+        from: "productimages",
+        let: { pid: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$productId", "$$pid"] },
+                  { $eq: ["$isPrimary", true] }
+                ]
+              }
+            }
+          },
+          { $limit: 1 },
+          { $project: { imageUrl: 1 } }
+        ],
+        as: "primaryImage"
+      }
+    },
+
+    /* 8️ SORT */
+    { $sort: sortStage },
+
+    /* 9️ FACET (DATA + TOTAL COUNT) */
+    {
+      $facet: {
+        data: [
+          { $skip: skip },
+          { $limit: sanitizedLimit },
+          {
+            $project: {
+              _id: 1,
+              title: "$name",
+              handle: 1,
+              categoryName: { $arrayElemAt: ["$category.name", 0] },
+              imageUrl: {
+                $ifNull: [
+                  { $arrayElemAt: ["$primaryImage.imageUrl", 0] },
+                  "https://via.placeholder.com/500?text=No+Image"
+                ]
+              },
+              price: "$defaultVariant.price",
+              salePrice: "$defaultVariant.salePrice",
+              sku: "$defaultVariant.sku",
+              stockQuantity: "$defaultVariant.stockQuantity",
+              createdAt: 1
+            }
+          }
+        ],
+        totalCount: [
+          { $count: "count" }
         ]
-      : []),
+      }
+    }
+  ];
+
+  const result = await Product.aggregate(pipeline).allowDiskUse(true);
+
+  const products = result[0].data;
+  const total = result[0].totalCount[0]?.count || 0;
+
+  return {
+    data: {
+      total,
+      page: sanitizedPage,
+      totalPages: Math.ceil(total / sanitizedLimit),
+      collections: products
+    }
+  };
+};
+
+/* ---------------- GET PRODUCT DETAIL ----------------- */
+export const getProductDetailService = async (identifier) => {
+  const isObjectId = mongoose.Types.ObjectId.isValid(identifier);
+
+  const matchQuery = isObjectId
+    ? { _id: new mongoose.Types.ObjectId(identifier) }
+    : { handle: identifier };
+
+  const result = await Product.aggregate([
+    {
+      $match: {
+        ...matchQuery,
+        isDeleted: false,
+        status: "active"
+      }
+    },
+
+    /* ---------------- CATEGORY ---------------- */
+    {
+      $lookup: {
+        from: "categories",
+        localField: "categoryId",
+        foreignField: "_id",
+        pipeline: [{ $project: { name: 1, handle: 1 } }],
+        as: "category"
+      }
+    },
+
+    /* ---------------- ACTIVE VARIANTS ---------------- */
+    {
+      $lookup: {
+        from: "productvariants",
+        let: { pid: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$productId", "$$pid"] },
+              isActive: true
+            }
+          },
+          {
+            $project: {
+              price: 1,
+              salePrice: 1,
+              color: 1,
+              size: 1,
+              sku: 1,
+              stockQuantity: 1,
+              isDefault: 1
+            }
+          }
+        ],
+        as: "variants"
+      }
+    },
 
     /* ---------------- IMAGES ---------------- */
     {
       $lookup: {
         from: "productimages",
-        localField: "_id",
-        foreignField: "productId",
-        as: "images",
-      },
+        let: { pid: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$productId", "$$pid"] },
+              isPrimary: true
+            }
+          },
+          { $limit: 1 },
+          { $project: { imageUrl: 1 } }
+        ],
+        as: "primaryImage"
+      }
     },
 
-    /* ---------------- CATEGORIES ---------------- */
+    /* ---------------- DEFAULT VARIANT ---------------- */
+    {
+      $addFields: {
+        defaultVariant: {
+          $ifNull: [
+            {
+              $arrayElemAt: [
+                {
+                  $filter: {
+                    input: "$variants",
+                    as: "v",
+                    cond: { $eq: ["$$v.isDefault", true] }
+                  }
+                },
+                0
+              ]
+            },
+            { $arrayElemAt: ["$variants", 0] }
+          ]
+        }
+      }
+    },
+
+    /* ---------------- RELATED PRODUCTS ---------------- */
     {
       $lookup: {
-        from: "categories",
-        localField: "categoryId",
-        foreignField: "_id",
-        as: "category",
-      },
+        from: "products",
+        let: {
+          currentId: "$_id",
+          categoryId: "$categoryId",
+          brand: "$brand"
+        },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $ne: ["$_id", "$$currentId"] },
+                  { $eq: ["$categoryId", "$$categoryId"] },
+                  { $eq: ["$status", "active"] },
+                  { $eq: ["$isDeleted", false] }
+                ]
+              }
+            }
+          },
+          { $sort: { createdAt: -1 } },
+          { $limit: 6 },
+
+          /* attach default variant price */
+          {
+            $lookup: {
+              from: "productvariants",
+              let: { pid: "$_id" },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: { $eq: ["$productId", "$$pid"] },
+                    isDefault: true
+                  }
+                },
+                {
+                  $project: {
+                    price: 1,
+                    salePrice: 1
+                  }
+                },
+                { $limit: 1 }
+              ],
+              as: "defaultVariant"
+            }
+          },
+
+          {
+            $lookup: {
+              from: "productimages",
+              let: { pid: "$_id" },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: { $eq: ["$productId", "$$pid"] },
+                    isPrimary: true
+                  }
+                },
+                { $limit: 1 },
+                { $project: { imageUrl: 1 } }
+              ],
+              as: "primaryImage"
+            }
+          },
+
+          {
+            $project: {
+              _id: 1,
+              name: 1,
+              handle: 1,
+              imageUrl: { $arrayElemAt: ["$primaryImage.imageUrl", 0] },
+              price: { $arrayElemAt: ["$defaultVariant.price", 0] },
+              salePrice: { $arrayElemAt: ["$defaultVariant.salePrice", 0] }
+            }
+          }
+        ],
+        as: "relatedProducts"
+      }
     },
 
-    /* ---------------- PROJECT OUTPUT ---------------- */
+    /* ---------------- FINAL SHAPE ---------------- */
     {
       $project: {
-        _id: 0,
-        id: "$shiprocketProductId",
-        title: "$name",
-        body_html: "$description",
-        vendor: "$brand",
-        handle: "$handle",
-        tags: "$tags",
-        product_type: { $arrayElemAt: ["$category.name", 0] },
-        created_at: "$createdAt",
-        updated_at: "$updatedAt",
-        status: "$status",
-
-        /* ---------------- PRODUCT IMAGES ---------------- */
-        image: {
-          $let: {
-            vars: {
-              productImages: {
-                $filter: {
-                  input: "$images",
-                  as: "img",
-                  cond: { $eq: ["$$img.variantId", null] },
-                },
-              },
-            },
-            in: {
-              $cond: [
-                { $gt: [{ $size: "$$productImages" }, 0] },
-                { src: { $arrayElemAt: ["$$productImages.imageUrl", 0] } },
-                null,
-              ],
-            },
-          },
-        },
-
-        /* ---------------- VARIANTS ---------------- */
-        variants: {
-          $map: {
-            input: "$variants",
-            as: "v",
-            in: {
-              id: "$$v.shiprocketVariantId",
-              title: { $concat: ["$$v.color", " / ", "$$v.size"] },
-              price: { $toString: "$$v.salePrice" },
-              compare_at_price: { $toString: "$$v.price" },
-              sku: "$$v.sku",
-              quantity: "$$v.stockQuantity",
-              created_at: "$$v.createdAt",
-              updated_at: "$$v.updatedAt",
-              taxable: true,
-              grams: { $multiply: ["$$v.weight", 1000] },
-              weight: "$$v.weight",
-              weight_unit: "kg",
-              option_values: { Color: "$$v.color", Size: "$$v.size" },
-
-              /* -------- VARIANT IMAGES -------- */
-              image: {
-                $let: {
-                  vars: {
-                    variantImages: {
-                      $filter: {
-                        input: "$images",
-                        as: "img",
-                        cond: { $eq: ["$$img.variantId", "$$v._id"] },
-                      },
-                    },
-                  },
-                  in: {
-                    $cond: [
-                      { $gt: [{ $size: "$$variantImages" }, 0] },
-                      {
-                        src: { $arrayElemAt: ["$$variantImages.imageUrl", 0] },
-                      },
-                      null,
-                    ],
-                  },
-                },
-              },
-            },
-          },
-        },
-
-        /* ---------------- OPTIONS ---------------- */
-        options: [
-          { name: "Color", values: { $setUnion: ["$variants.color"] } },
-          { name: "Size", values: { $setUnion: ["$variants.size"] } },
-        ],
-      },
-    },
-
-    { $sort: { createdAt: -1 } }, // newest first
-    { $skip: skip },
-    { $limit: limit },
+        _id: 1,
+        name: 1,
+        description: 1,
+        shortDescription: 1,
+        craftmenshipDetails: 1,
+        luxeMaterials: 1,
+        productSpecifications: 1,
+        capacityAndDimensions: 1,
+        stylingInspiration: 1,
+        occasionsAndUsage: 1,
+        careGuide: 1,
+        brand: 1,
+        handle: 1,
+        tags: 1,
+        category: { $arrayElemAt: ["$category", 0] },
+        galleryImage: { $arrayElemAt: ["$primaryImage.imageUrl", 0] },
+        variants: 1,
+        relatedProducts: 1
+      }
+    }
   ]);
 
-  const data = { total, products };
-
-  return {
-    data,
-  };
-};
-
-/* ---------------- GET PRODUCT BY ID ---------------- */
-export const getProductByIdService = async (productId) => {
-  if (!mongoose.Types.ObjectId.isValid(productId)) {
-    throw new Error("Invalid product ID");
+  if (!result.length) {
+    throw new ApiError(404, "Product not found");
   }
 
-  const product = await Product.aggregate([
-    { $match: { _id: mongoose.Types.ObjectId(productId), isDeleted: false } },
-
-    // Lookup variants
-    {
-      $lookup: {
-        from: "productvariants",
-        localField: "_id",
-        foreignField: "productId",
-        as: "variants",
-      },
-    },
-
-    // Lookup images (product + variants)
-    {
-      $lookup: {
-        from: "productimages",
-        localField: "_id",
-        foreignField: "productId",
-        as: "images",
-      },
-    },
-
-    // Lookup category name
-    {
-      $lookup: {
-        from: "categories",
-        localField: "categoryId",
-        foreignField: "_id",
-        as: "category",
-      },
-    },
-
-    // Project Shiprocket-ready format
-    {
-      $project: {
-        id: "$shiprocketProductId",
-        title: "$name",
-        body_html: "$description",
-        vendor: "$brand",
-        product_type: { $arrayElemAt: ["$category.name", 0] },
-        created_at: "$createdAt",
-        updated_at: "$updatedAt",
-        status: "$status",
-        tags: {
-          $reduce: {
-            input: "$tags",
-            initialValue: "",
-            in: {
-              $cond: [
-                { $eq: ["$$value", ""] },
-                "$$this",
-                { $concat: ["$$value", ", ", "$$this"] },
-              ],
-            },
-          },
-        },
-        image: {
-          $map: {
-            input: {
-              $filter: {
-                input: "$images",
-                as: "img",
-                cond: { $eq: ["$$img.variantId", null] },
-              },
-            },
-            as: "i",
-            in: { src: "$$i.imageUrl" },
-          },
-        },
-        variants: {
-          $map: {
-            input: "$variants",
-            as: "v",
-            in: {
-              id: "$$v._id",
-              title: { $concat: ["$$v.color", " / ", "$$v.size"] },
-              price: { $toString: "$$v.price" },
-              sku: "$$v.sku",
-              quantity: "$$v.stockQuantity",
-              created_at: "$$v.createdAt",
-              updated_at: "$$v.updatedAt",
-              option_values: { Color: "$$v.color", Size: "$$v.size" },
-              images: {
-                $map: {
-                  input: {
-                    $filter: {
-                      input: "$images",
-                      as: "img",
-                      cond: { $eq: ["$$img.variantId", "$$v._id"] },
-                    },
-                  },
-                  as: "vi",
-                  in: { src: "$$vi.imageUrl" },
-                },
-              },
-              taxable: true,
-              compare_at_price: null,
-              grams: 0,
-            },
-          },
-        },
-        options: [
-          { name: "Color", values: { $setUnion: ["$variants.color"] } },
-          { name: "Size", values: { $setUnion: ["$variants.size"] } },
-        ],
-      },
-    },
-  ]);
-
-  if (!product || product.length === 0) {
-    throw new Error("Product not found");
-  }
-
-  return product[0];
+  return result[0];
 };
 
 /* ---------------- DELETE PRODUCT (soft delete) ---------------- */
@@ -727,53 +980,3 @@ export const deleteProductService = async ({
   }
 };
 
-/* ---------------- FEATURED PRODUCTS ---------------- */
-export const featuredProductsService = async (limit = 10) => {
-  const products = await Product.find({
-    isFeatured: true,
-    isActive: true,
-    isDeleted: false,
-  })
-    .populate({
-      path: "defaultVariant",
-    })
-    .populate({
-      path: "images",
-      match: { variantId: null },
-    })
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .lean();
-
-  return products.map((p) => ({
-    id: p._id,
-    title: p.name,
-    image: p.images?.[0]?.imageUrl || null,
-    price: p.defaultVariant?.price || 0,
-    status: p.status,
-  }));
-};
-
-/* ---------------- POPULAR PRODUCTS ---------------- */
-export const popularProductsService = async (limit = 10) => {
-  // For demo: popular = most recently created active products
-  const products = await Product.find({ isActive: true, isDeleted: false })
-    .populate({
-      path: "defaultVariant",
-    })
-    .populate({
-      path: "images",
-      match: { variantId: null },
-    })
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .lean();
-
-  return products.map((p) => ({
-    id: p._id,
-    title: p.name,
-    image: p.images?.[0]?.imageUrl || null,
-    price: p.defaultVariant?.price || 0,
-    status: p.status,
-  }));
-};

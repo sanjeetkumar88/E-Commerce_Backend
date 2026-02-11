@@ -69,6 +69,7 @@ const productImageSchema = new mongoose.Schema(
 // Product images lookup
 productImageSchema.index({ productId: 1, variantId: 1 });
 
+
 // Only one primary image per product (when variantId is null)
 productImageSchema.index(
   { productId: 1, isPrimary: 1 },

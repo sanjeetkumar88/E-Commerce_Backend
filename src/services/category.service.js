@@ -5,80 +5,63 @@ import mongoose from "mongoose";
 
 /* -------------------- CREATE CATEGORY -------------------- */
 export const createCategoryService = async (data) => {
-  const {
-    name,
-    description,
-    parentId,
-    imageUrl,
-    isActive,
-    sortOrder,
-    metaTitle,
-    metaDescription,
-  } = data;
+  try {
+    const category = await Category.create(data);
+    return category;
+  } catch (error) {
+    if (error.code === 11000) {
+      const duplicateField = Object.keys(error.keyPattern)[0];
 
-  // Check duplicate handle
-  const existing = await Category.findOne({ name });
-  if (existing) {
-    throw new ApiError(409, "Category with this name already exists");
+      throw new ApiError(
+        409,
+        `A category with this ${duplicateField} already exists.`,
+      );
+    }
+    throw error;
   }
-  let handle = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  const category = await Category.create({
-    name,
-    handle,
-    description,
-    parentId: parentId || null,
-    imageUrl,
-    isActive,
-    sortOrder,
-    metaTitle,
-    metaDescription,
-  });
-
-  return category;
 };
 
 /* -------------------- GET ALL CATEGORIES -------------------- */
 export const getAllCategories = async ({ page = 1, limit = 100 }) => {
-  page = parseInt(page);
-  limit = parseInt(limit);
+  const sanitizedPage = Math.max(1, parseInt(page) || 1);
+  const sanitizedLimit = Math.max(1, Math.min(parseInt(limit) || 100, 250));
+  const skip = (sanitizedPage - 1) * sanitizedLimit;
 
-  const skip = (page - 1) * limit;
-  const total = await Category.countDocuments({ isActive: true });
-  const categories = await Category.find({ isActive: true })
-    .sort({ sortOrder: 1 })
-    .skip(skip)
-    .limit(limit);
+  const [total, categories] = await Promise.all([
+    Category.countDocuments({ isActive: true }),
+    Category.find({ isActive: true })
+      .sort({ sortOrder: 1, createdAt: -1 })
+      .skip(skip)
+      .limit(sanitizedLimit)
+      .lean()
+  ]);
 
-  // Map to Shiprocket / Shopify collection format
   const collections = categories.map((cat) => ({
     _id: cat._id,
     id: cat.shiprocketCategoryId,
     title: cat.name,
     body_html: cat.description || "",
-    handle: cat.handle,
-    image: cat.imageUrl ? { src: cat.imageUrl } : null,
-    created_at: cat.createdAt,
-    updated_at: cat.updatedAt,
+    handle: cat.handle || cat.name?.toLowerCase().replace(/\s+/g, "-"),
+    ...(cat.imageUrl && { image: { src: cat.imageUrl } }),
+    parentId: cat.parentId,
+    created_at: cat.createdAt?.toISOString(),
+    updated_at: cat.updatedAt?.toISOString(),
   }));
 
-  const data = { total, collections };
-
   return {
-    data,
+    data: {
+      total,
+      collections,
+    },
   };
 };
-
 
 
 /* -------------------- UPDATE CATEGORY -------------------- */
 export const updateCategoryService = async (categoryId, data) => {
   const allowedFields = [
     "name",
-    "slug",
+    "handle",
     "description",
     "parentId",
     "imageUrl",
@@ -92,49 +75,126 @@ export const updateCategoryService = async (categoryId, data) => {
     Object.entries(data).filter(([key]) => allowedFields.includes(key))
   );
 
-  // If slug is updated → ensure uniqueness
-  if (filteredData.slug) {
-    const exists = await Category.findOne({
-      slug: filteredData.slug,
-      _id: { $ne: categoryId },
-    });
+  if (Object.keys(filteredData).length === 0) {
+    throw new ApiError(400, "No valid fields provided for update.");
+  }
 
-    if (exists) {
-      throw new ApiError(409, "Slug already in use");
+  if (filteredData.name && !filteredData.handle) {
+    filteredData.handle = filteredData.name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  if (filteredData.parentId?.toString() === categoryId.toString()) {
+    throw new ApiError(400, "Category cannot be its own parent.");
+  }
+
+  try {
+    const updatedCategory = await Category.findByIdAndUpdate(
+      categoryId,
+      filteredData,
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedCategory) {
+      throw new ApiError(404, "Category not found");
     }
+
+    return updatedCategory;
+
+  } catch (error) {
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      throw new ApiError(409, `The ${field} is already in use by another category.`);
+    }
+
+    if (error.name === "ValidationError") {
+      const messages = Object.values(error.errors).map((val) => val.message);
+      throw new ApiError(400, messages.join(", "));
+    }
+
+    throw error;
   }
-
-  const updatedCategory = await Category.findByIdAndUpdate(
-    categoryId,
-    filteredData,
-    { new: true, runValidators: true }
-  );
-
-  if (!updatedCategory) {
-    throw new ApiError(404, "Category not found");
-  }
-
-  return updatedCategory;
 };
 
-/* -------------------- DELETE (SOFT) CATEGORY -------------------- */
-export const deleteCategory = async (id) => {
-  // const category = await Category.findByIdAndUpdate(
-  //   id,
-  //   { isActive: false },
-  //   { new: true }
-  // );
 
-  const category = await Category.findOneAndDelete({
-    shiprocketCategoryId: id,
-  });
 
-  if (!category) {
-    throw new ApiError(404, "Category not found");
+/**
+ * @param {string} categoryId - The ID of the category to delete
+ * @param {string} strategy - 'CASCADE' or 'ORPHAN' (defaults to ORPHAN)
+ */
+
+export const deleteCategory = async (
+  categoryId,
+  strategy = "ORPHAN",
+) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const category = await Category.findById(categoryId).session(session);
+    if (!category) {
+      throw new ApiError(404, "Category not found");
+    }
+
+    if (strategy === "CASCADE") {
+      // 1. Find all descendant IDs (Recursive)
+      const allDescendantIds = await getAllDescendantIds(categoryId);
+      const idsToDelete = [categoryId, ...allDescendantIds];
+
+      // 2. Delete all categories in the hierarchy
+      await Category.deleteMany({ _id: { $in: idsToDelete } }).session(session);
+
+      // 3. Handle Products: You can either delete them or mark them as "Uncategorized"
+      await Product.updateMany(
+        { categoryId: { $in: idsToDelete } },
+        { $set: { categoryId: null, isActive: false } },
+      ).session(session);
+    } else {
+      // ORPHAN Strategy (Default)
+      // 1. Move children to root
+      await Category.updateMany(
+        { parentId: categoryId },
+        { $set: { parentId: null } },
+      ).session(session);
+
+      // 2. Clear product category associations
+      await Product.updateMany(
+        { categoryId: categoryId },
+        { $set: { categoryId: null } },
+      ).session(session);
+
+      // 3. Delete the target category
+      await Category.findByIdAndDelete(categoryId).session(session);
+    }
+
+    await session.commitTransaction();
+    return {
+      message: `Category deleted successfully using ${strategy} strategy`,
+    };
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
   }
-
-  return category;
 };
+
+/**
+ * Helper to find all nested children IDs
+ */
+async function getAllDescendantIds(parentId) {
+  let descendants = [];
+  const children = await Category.find({ parentId }).select("_id");
+
+  for (const child of children) {
+    descendants.push(child._id);
+    const nested = await getAllDescendantIds(child._id);
+    descendants.push(...nested);
+  }
+  return descendants;
+}
 
 /* ---------------- GET PRODUCTS BY CATEGORY ---------------- */
 
@@ -144,27 +204,39 @@ export const getProductsByCategory = async ({
   page = 1,
   limit = 100,
 }) => {
-  page = parseInt(page);
-  limit = parseInt(limit);
-  const skip = (page - 1) * limit;
+  // 1. Sanitize pagination inputs
+  const sanitizedPage = Math.max(1, parseInt(page));
+  const sanitizedLimit = Math.max(1, parseInt(limit));
+  const skip = (sanitizedPage - 1) * sanitizedLimit;
 
+  // 2. Build the Match Query
   const matchQuery = {
     categoryId: new mongoose.Types.ObjectId(categoryId),
     isDeleted: false,
   };
 
-  // 🔎 Add search
+  // Add Case-Insensitive Search
   if (search && search.trim() !== "") {
-    const regex = new RegExp(search.trim(), "i"); // case-insensitive
-    matchQuery.$or = [{ name: regex }, { description: regex }, { tags: regex }];
+    const regex = new RegExp(search.trim(), "i");
+    matchQuery.$or = [
+      { name: regex },
+      { description: regex },
+      { tags: regex },
+      { brand: regex },
+    ];
   }
 
+  // 3. Get Total Count (Run in parallel with aggregate for better speed if needed)
   const total = await Product.countDocuments(matchQuery);
 
+  // 4. Execute Optimized Aggregation
   const products = await Product.aggregate([
     { $match: matchQuery },
+    { $sort: { createdAt: -1 } },
 
-    // Lookup variants
+    { $skip: skip },
+    { $limit: sanitizedLimit },
+
     {
       $lookup: {
         from: "productvariants",
@@ -173,8 +245,6 @@ export const getProductsByCategory = async ({
         as: "variants",
       },
     },
-
-    // Lookup images
     {
       $lookup: {
         from: "productimages",
@@ -183,24 +253,18 @@ export const getProductsByCategory = async ({
         as: "images",
       },
     },
-
-    // Lookup category
     {
       $lookup: {
         from: "categories",
-        localField: "shiprocketCategoryId",
-        foreignField: "shiprocketCategoryId",
+        localField: "categoryId",
+        foreignField: "_id",
         as: "category",
       },
     },
 
-    { $sort: { createdAt: -1 } },
-    { $skip: skip },
-    { $limit: limit },
-
     {
       $project: {
-        _id: 0,
+        _id: 1,
         id: "$shiprocketProductId",
         title: "$name",
         body_html: "$description",
@@ -209,9 +273,10 @@ export const getProductsByCategory = async ({
         created_at: "$createdAt",
         updated_at: "$updatedAt",
         handle: "$handle",
+        status: "$status",
         tags: {
           $reduce: {
-            input: "$tags",
+            input: { $ifNull: ["$tags", []] },
             initialValue: "",
             in: {
               $cond: [
@@ -222,20 +287,9 @@ export const getProductsByCategory = async ({
             },
           },
         },
-        status: "$status",
-        images: {
-          $map: {
-            input: {
-              $filter: {
-                input: "$images",
-                as: "img",
-                cond: { $eq: ["$$img.variantId", null] },
-              },
-            },
-            as: "i",
-            in: { src: "$$i.imageUrl" },
-          },
-        },
+        image: { src: { $arrayElemAt: ["$images.imageUrl", 0] } },
+
+        // Format Variants
         variants: {
           $map: {
             input: "$variants",
@@ -246,18 +300,25 @@ export const getProductsByCategory = async ({
               price: { $toString: "$$v.salePrice" },
               compare_at_price: { $toString: "$$v.price" },
               sku: "$$v.sku",
+              quantity: "$$v.stockQuantity",
+              weight: { $divide: ["$$v.weight", 1000] },
+              grams: "$$v.weight",
+              weight_unit: "kg",
               created_at: "$$v.createdAt",
               updated_at: "$$v.updatedAt",
-              taxable: true,
-              quantity: "$$v.stockQuantity",
-              grams: { $multiply: ["$$v.weight", 1000] },
-              weight: "$$v.weight",
-              weight_unit: "kg",
               option_values: { Color: "$$v.color", Size: "$$v.size" },
-              images: {
+              taxable: {
+                $cond: {
+                  if: { $gt: ["$$v.taxRate", 0] },
+                  then: true,
+                  else: false,
+                },
+              },
+              // Find the first image associated with this specific variant
+              image: {
                 $let: {
                   vars: {
-                    imgs: {
+                    vImg: {
                       $filter: {
                         input: "$images",
                         as: "img",
@@ -267,8 +328,8 @@ export const getProductsByCategory = async ({
                   },
                   in: {
                     $cond: [
-                      { $gt: [{ $size: "$$imgs" }, 0] },
-                      { src: { $arrayElemAt: ["$$imgs.imageUrl", 0] } },
+                      { $gt: [{ $size: "$$vImg" }, 0] },
+                      { src: { $arrayElemAt: ["$$vImg.imageUrl", 0] } },
                       null,
                     ],
                   },
@@ -277,20 +338,97 @@ export const getProductsByCategory = async ({
             },
           },
         },
+
         options: [
-          { name: "Color", values: { $setUnion: ["$variants.color"] } },
-          { name: "Size", values: { $setUnion: ["$variants.size"] } },
+          {
+            name: "Color",
+            values: {
+              $setUnion: [
+                {
+                  $filter: {
+                    input: "$variants.color",
+                    as: "c",
+                    cond: { $ne: ["$$c", null] },
+                  },
+                },
+              ],
+            },
+          },
+          {
+            name: "Size",
+            values: {
+              $setUnion: [
+                {
+                  $filter: {
+                    input: "$variants.size",
+                    as: "s",
+                    cond: { $ne: ["$$s", null] },
+                  },
+                },
+              ],
+            },
+          },
         ],
       },
     },
   ]);
 
-  products.forEach((prod) => {
-    prod.image = prod.images.length > 0 ? { src: prod.images[0].src } : null;
-    delete prod.images;
+  return {
+    data: {
+      total,
+      products: products,
+    },
+  };
+};
+
+/* ---------------- GET CATEGORY TREE ---------------- */
+
+export const getCategoryTree = async () => {
+  // Fetch only active categories
+  const categories = await Category.find({ isActive: true })
+    .sort({ sortOrder: 1 })
+    .lean();
+
+  const map = {};
+  const tree = [];
+
+  // Create a map of all categories
+  categories.forEach((cat) => {
+    map[cat._id] = { ...cat, children: [] };
   });
 
-  const data = { total, products };
+  // Build the tree
+  categories.forEach((cat) => {
+    if (cat.parentId && map[cat.parentId]) {
+      map[cat.parentId].children.push(map[cat._id]);
+    } else {
+      tree.push(map[cat._id]);
+    }
+  });
 
-  return {data};
+  return tree;
+};
+
+/* ---------------- GET CATEGORY BREADCRUMBS ---------------- */
+export const getCategoryBreadcrumbs = async (categoryId) => {
+  const breadcrumbs = [];
+  let currentId = categoryId;
+
+  while (currentId) {
+    const category = await Category.findById(currentId)
+      .select("name handle parentId")
+      .lean();
+    
+    if (!category) break;
+
+    breadcrumbs.unshift({
+      name: category.name,
+      handle: category.handle,
+      id: category._id
+    });
+
+    currentId = category.parentId;
+  }
+
+  return breadcrumbs;
 };

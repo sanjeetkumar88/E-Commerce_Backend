@@ -21,7 +21,7 @@ import userAddressRoutes from "./src/routes/userAddress.route.js";
 import productRoutes from "./src/routes/product.route.js";
 import categoryRoutes from "./src/routes/category.route.js";
 import cartRoutes from "./src/routes/cart.route.js";
-import orderRoutes from "./src/routes/order.route.js";
+import wishlistRoutes from "./src/routes/wishlist.route.js";
 
 
 app.use('/api/v1/auth', authRoutes);
@@ -29,7 +29,7 @@ app.use('/api/v1/addresses', userAddressRoutes);
 app.use("/api/v1/products", productRoutes);
 app.use("/api/v1/categories", categoryRoutes);
 app.use("/api/v1/cart", cartRoutes);
-app.use("/api/v1/orders", orderRoutes);
+app.use("/api/v1/wishlist", wishlistRoutes);
 
 
 export default app;

@@ -1,23 +1,27 @@
-// routes/cart.route.js
-import express from "express";
-import {
-  addToCart,
-  getCart,
-  updateCartItemQty,
-  removeCartItem,
-  mergeGuestCart,
+import { Router } from "express";
+import { 
+  getCart, 
+  addToCart, 
+  updateCartQuantity, 
+  removeCartItem, 
+  mergeGuestCart 
 } from "../controllers/cartController.js";
 import { verifyJWT } from "../middlewares/authMiddleware.js";
 
-const router = express.Router();
+const router = Router();
 
-router.route("/").get(verifyJWT, getCart).post(verifyJWT, addToCart);
+// Secure all cart routes
+router.use(verifyJWT);
 
-router.route("/merge").post(verifyJWT, mergeGuestCart);
+router.route("/")
+  .get(getCart)          // GET /api/v1/cart?state=IN
+  .post(addToCart);      // POST /api/v1/cart
 
-router
-  .route("/:id")
-  .patch(verifyJWT, updateCartItemQty)
-  .delete(verifyJWT, removeCartItem);
+router.route("/merge")
+  .post(mergeGuestCart); // POST /api/v1/cart/merge
 
-export default router;
+router.route("/item/:cartItemId")
+  .patch(updateCartQuantity) // PATCH /api/v1/cart/item/ID
+  .delete(removeCartItem);   // DELETE /api/v1/cart/item/ID
+
+export default router; 

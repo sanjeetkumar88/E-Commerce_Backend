@@ -3,34 +3,6 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 
 /* ---------------- CREATE PRODUCT + VARIANTS ---------------- */
-// export const createProduct = async (req, res, next) => {
-//   try {
-//     const {
-//       name,
-//       description,
-//       shortDescription,
-//       categoryId,
-//       brand,
-//       tags,
-//       isFeatured,
-//       isActive,
-//       variants
-//     } = req.body;
-
-//     // ✅ Remove JSON.parse if variants is already an array
-//     const variantList = Array.isArray(variants) ? variants : [];
-
-//     const result = await productService.createProductService({
-//       productData: { name, description, shortDescription, categoryId, brand, tags, isFeatured, isActive },
-//       variants: variantList
-//     });
-
-//     return res.status(201).json(new ApiResponse(true, "Product created successfully", result));
-//   } catch (err) {
-//     console.error(err);
-//     next(new ApiError(err.statusCode || 500, err.message || "Internal Server Error"));
-//   }
-// };
 
 export const createProduct = async (req, res, next) => {
   try {
@@ -146,9 +118,9 @@ export const updateProduct = async (req, res, next) => {
 };
 
 /* ---------------- GET PRODUCTS ---------------- */
-export const getProducts = async (req, res, next) => {
+export const getProductsShipRocket = async (req, res, next) => {
   try {
-    const result = await productService.getProductsService(req.query);
+    const result = await productService.getProductsShipRocketService(req.query);
     
     return res
       .status(200)
@@ -158,16 +130,38 @@ export const getProducts = async (req, res, next) => {
   }
 };
 
-/* ---------------- GET PRODUCT BY ID ---------------- */
- export const getProductById = async (req, res, next) => {
+/* ---------------- GET PRODUCTS (GENERAL) ---------------- */
+export const getProducts = async (req, res, next) => {
   try {
-    const { productId } = req.params;
+    const { colors, sizes, sort, page, limit, search } = req.query;
 
-    const product = await productService.getProductByIdService(productId);
+    const result = await productService.getProductListService({
+      page,
+      limit,
+      search,
+      sort,
+      // Convert "red,blue" string to ["red", "blue"]
+      colors: colors ? colors.split(",") : [],
+      sizes: sizes ? sizes.split(",") : []
+    });
 
-    return res.status(200).json(new ApiResponse(true, "Product fetched successfully", product));
-  } catch (err) {
-    next(err);
+    res.status(200).json(new ApiResponse(200, result.data, "Products fetched"));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* ---------------- GET PRODUCT BY ID ---------------- */
+export const getProductDetail = async (req, res, next) => {
+  try {
+    const { identifier } = req.params;
+    const product = await productService.getProductDetailService(identifier);
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, product, "Product details fetched successfully"));
+  } catch (error) {
+    next(error);
   }
 };
 

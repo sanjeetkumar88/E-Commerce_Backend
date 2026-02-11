@@ -1,75 +1,100 @@
-// controllers/cart.controller.js
-
 import * as cartService from "../services/cart.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
-/* ---------------- ADD TO CART ---------------- */
+/**
+ * @desc Add item to cart
+ */
 export const addToCart = async (req, res, next) => {
   try {
-    
-    const item = await cartService.addToCartService({
-      userId: req.user.id,
-      ...req.body,
-    });
-    
+    const { productId, variantId, quantity } = req.body;
+    const userId = req.user._id;
 
-    res.status(201).json(new ApiResponse(201, item, "Item added to cart"));
-  } catch (err) {
-    next(err);
+    const result = await cartService.addToCart(
+      userId,
+      productId,
+      variantId,
+      parseInt(quantity) || 1
+    );
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, result, "Item added to cart"));
+  } catch (error) {
+    next(error);
   }
 };
 
-/* ---------------- GET CART ---------------- */
+/**
+ * @desc Get user cart with tax and totals
+ */
 export const getCart = async (req, res, next) => {
   try {
-    const cart = await cartService.getCartService(req.user.id, req.query.couponCode);
-    res.status(200).json(new ApiResponse(200, cart));
-  } catch (err) {
-    next(err);
+    const userId = req.user._id;
+    // userState can be passed as a query param (e.g., ?state=IN)
+    const { state = "IN" } = req.query;
+
+    const cartData = await cartService.getCart(userId, state);
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, cartData, "Cart fetched successfully"));
+  } catch (error) {
+    next(error);
   }
 };
 
-/* ---------------- UPDATE QTY ---------------- */
-export const updateCartItemQty = async (req, res, next) => {
+/**
+ * @desc Update quantity of a specific item
+ */
+export const updateCartQuantity = async (req, res, next) => {
   try {
-    const item = await cartService.updateCartItemQtyService({
-      userId: req.user.id,
-      cartItemId: req.params.id,
-      quantity: req.body.quantity,
-    });
+    const { cartItemId } = req.params;
+    const { quantity } = req.body;
 
-    res.status(200).json(new ApiResponse(200, item, "Quantity updated"));
-  } catch (err) {
-    next(err);
+    const result = await cartService.updateCartQuantity(
+      cartItemId, 
+      parseInt(quantity)
+    );
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, result, "Cart quantity updated"));
+  } catch (error) {
+    next(error);
   }
 };
 
-/* ---------------- REMOVE ITEM ---------------- */
+/**
+ * @desc Remove item from cart
+ */
 export const removeCartItem = async (req, res, next) => {
   try {
-    await cartService.removeCartItemService({
-      userId: req.user.id,
-      cartItemId: req.params.id,
-    });
+    const { cartItemId } = req.params;
 
-    res.status(200).json(new ApiResponse(200, null, "Item removed"));
-  } catch (err) {
-    next(err);
+    const result = await cartService.removeCartItem(cartItemId);
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, result, "Item removed from cart"));
+  } catch (error) {
+    next(error);
   }
 };
 
-
+/**
+ * @desc Merge guest cart (from localStorage) into user cart
+ */
 export const mergeGuestCart = async (req, res, next) => {
   try {
-    await cartService.mergeGuestCartService(
-      req.user.id,
-      req.body.items
-    );
+    const { guestItems } = req.body;
+    const userId = req.user._id;
 
-    res.status(200).json(
-      new ApiResponse(200, null, "Guest cart merged")
-    );
-  } catch (err) {
-    next(err);
+    const result = await cartService.mergeGuestCartService(userId, guestItems);
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, result, "Guest cart merged"));
+  } catch (error) {
+    next(error);
   }
 };

@@ -72,12 +72,12 @@ const productVariantSchema = new mongoose.Schema(
     },
 
     weight: {
-      type: Number,
+      type: Number, // grams
     },
     dimensions: {
-      length: Number,
-      width: Number,
-      height: Number,
+      length: Number, //cm
+      width: Number, //cm
+      height: Number, //cm
     },
     hsnCode: {
       type: String,
@@ -169,6 +169,10 @@ productVariantSchema.index(
   { productId: 1, isDefault: 1 },
   { unique: true, partialFilterExpression: { isDefault: true } }
 );
+
+productVariantSchema.index({ productId: 1, color: 1 })
+productVariantSchema.index({ productId: 1, size: 1 })
+
 
 /* ---------------- VIRTUALS ---------------- */
 productVariantSchema.virtual("images", {
