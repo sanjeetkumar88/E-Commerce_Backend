@@ -381,6 +381,221 @@ export const getProductsByCategory = async ({
   };
 };
 
+
+export const getProductListByCategoryHandleService = async ({
+  page = 1,
+  limit = 12,
+  search = "",
+  sort = "newest",
+  colors = [],
+  sizes = [],
+  isFeatured = false,
+  categoryHandle = null,
+  categoryId = null,
+}) => {
+  const sanitizedPage = Math.max(1, parseInt(page) || 1);
+  const sanitizedLimit = Math.min(50, Math.max(1, parseInt(limit) || 12));
+  const skip = (sanitizedPage - 1) * sanitizedLimit;
+
+  /* ---------------- CATEGORY FILTER ---------------- */
+
+  let categoryMatch = {};
+
+  if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
+    categoryMatch.categoryId = new mongoose.Types.ObjectId(categoryId);
+  }
+
+  /* ---------------- BASE MATCH ---------------- */
+
+  const baseMatch = {
+    isDeleted: false,
+    status: "active",
+    ...categoryMatch,
+    ...(isFeatured && { isFeatured: true }),
+  };
+
+  if (search?.trim()) {
+    baseMatch.$text = { $search: search.trim() };
+  }
+
+  /* ---------------- SORT ---------------- */
+
+  let sortStage = { createdAt: -1 };
+  if (sort === "priceLow") sortStage = { sortPrice: 1 };
+  if (sort === "priceHigh") sortStage = { sortPrice: -1 };
+
+  const pipeline = [
+
+    /* 1️⃣ MATCH BASE */
+    { $match: baseMatch },
+
+    /* 2️⃣ IF categoryHandle IS PROVIDED → MATCH VIA LOOKUP */
+    ...(categoryHandle
+      ? [
+          {
+            $lookup: {
+              from: "categories",
+              localField: "categoryId",
+              foreignField: "_id",
+              as: "categoryData",
+            },
+          },
+          {
+            $match: {
+              "categoryData.handle": categoryHandle,
+            },
+          },
+        ]
+      : []),
+
+    /* 3️⃣ LOOKUP VARIANTS */
+    {
+      $lookup: {
+        from: "productvariants",
+        let: { pid: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$productId", "$$pid"] },
+              isActive: true,
+              stockQuantity: { $gt: 0 },
+              ...(colors.length > 0 && { color: { $in: colors } }),
+              ...(sizes.length > 0 && { size: { $in: sizes } }),
+            },
+          },
+          {
+            $project: {
+              price: 1,
+              salePrice: 1,
+              sku: 1,
+              stockQuantity: 1,
+              isDefault: 1,
+            },
+          },
+        ],
+        as: "variants",
+      },
+    },
+
+    /* 4️⃣ REMOVE PRODUCTS WITHOUT VARIANTS */
+    { $match: { "variants.0": { $exists: true } } },
+
+    /* 5️⃣ DEFAULT VARIANT */
+    {
+      $addFields: {
+        defaultVariant: {
+          $ifNull: [
+            {
+              $arrayElemAt: [
+                {
+                  $filter: {
+                    input: "$variants",
+                    as: "v",
+                    cond: { $eq: ["$$v.isDefault", true] },
+                  },
+                },
+                0,
+              ],
+            },
+            { $arrayElemAt: ["$variants", 0] },
+          ],
+        },
+      },
+    },
+
+    /* 6️⃣ SORT PRICE */
+    {
+      $addFields: {
+        sortPrice: {
+          $ifNull: ["$defaultVariant.salePrice", "$defaultVariant.price"],
+        },
+      },
+    },
+
+    /* 7️⃣ LOOKUP CATEGORY NAME (LIGHT) */
+    {
+      $lookup: {
+        from: "categories",
+        localField: "categoryId",
+        foreignField: "_id",
+        pipeline: [{ $project: { name: 1 } }],
+        as: "category",
+      },
+    },
+
+    /* 8️⃣ LOOKUP PRIMARY IMAGE */
+    {
+      $lookup: {
+        from: "productimages",
+        let: { pid: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$productId", "$$pid"] },
+                  { $eq: ["$isPrimary", true] },
+                ],
+              },
+            },
+          },
+          { $limit: 1 },
+          { $project: { imageUrl: 1 } },
+        ],
+        as: "primaryImage",
+      },
+    },
+
+    /* 9️⃣ SORT */
+    { $sort: sortStage },
+
+    /* 🔟 FACET */
+    {
+      $facet: {
+        data: [
+          { $skip: skip },
+          { $limit: sanitizedLimit },
+          {
+            $project: {
+              _id: 1,
+              title: "$name",
+              handle: 1,
+              categoryName: { $arrayElemAt: ["$category.name", 0] },
+              imageUrl: {
+                $ifNull: [
+                  { $arrayElemAt: ["$primaryImage.imageUrl", 0] },
+                  "https://via.placeholder.com/500?text=No+Image",
+                ],
+              },
+              price: "$defaultVariant.price",
+              salePrice: "$defaultVariant.salePrice",
+              sku: "$defaultVariant.sku",
+              stockQuantity: "$defaultVariant.stockQuantity",
+              createdAt: 1,
+            },
+          },
+        ],
+        totalCount: [{ $count: "count" }],
+      },
+    },
+  ];
+
+  const result = await Product.aggregate(pipeline).allowDiskUse(true);
+
+  const products = result[0].data;
+  const total = result[0].totalCount[0]?.count || 0;
+
+  return {
+    data: {
+      total,
+      page: sanitizedPage,
+      totalPages: Math.ceil(total / sanitizedLimit),
+      collections: products,
+    },
+  };
+};
+
+
 /* ---------------- GET CATEGORY TREE ---------------- */
 
 export const getCategoryTree = async () => {

@@ -9,7 +9,7 @@ import mongoose from "mongoose";
 /* -------------------------------------------------------------------------- */
 /*                           PRODUCTS BY CATEGORY                               */
 /* -------------------------------------------------------------------------- */
-export const getProductsByCategory = async (req, res, next) => {
+export const getProductsByCategoryShipRocket = async (req, res, next) => {
   try {
 
     
@@ -190,6 +190,41 @@ export const getCategoryTree = async (req, res, next) => {
     return res
       .status(200)
       .json(new ApiResponse(200, tree, "Category tree fetched successfully"));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProductsByCategory = async (req, res, next) => {
+  try {
+    const { 
+      page, 
+      limit, 
+      search, 
+      sort, 
+      colors, 
+      sizes, 
+      isFeatured, 
+      categoryHandle, 
+      categoryId 
+    } = req.query;
+
+    const result = await productService.getProductListByCategoryHandleService({
+      page,
+      limit,
+      search,
+      sort,
+      // Convert "red,blue" -> ["red", "blue"]
+      colors: colors ? colors.split(",") : [],
+      sizes: sizes ? sizes.split(",") : [],
+      isFeatured: isFeatured === "true",
+      categoryHandle,
+      categoryId
+    });
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, result.data, "Products fetched successfully"));
   } catch (error) {
     next(error);
   }

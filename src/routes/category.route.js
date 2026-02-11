@@ -7,6 +7,7 @@ import {
   getProductsByCategory,
   getCategoryBreadcrumbs,
   getCategoryTree,
+  getProductsByCategoryShipRocket,
 } from "../controllers/categoryController.js";
 
 import { verifyJWT } from "../middlewares/authMiddleware.js";
@@ -34,7 +35,9 @@ router
 
 /*----------------------PRODUCTS BY CATEGORY------------------*/
 
-router.route("/:categoryId").get(getProductsByCategory);
+router.route("/:categoryhandle").get(getProductsByCategory);
+
+router.route("/sync/:categoryId").get(getProductsByCategoryShipRocket);
 
 /*----------------------CATEGORY BREADCRUMBS------------------*/
 router.route("/:id/breadcrumbs").get(getCategoryBreadcrumbs);
