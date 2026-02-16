@@ -3,61 +3,159 @@ import mongoose from "mongoose";
 
 const orderSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    orderNumber: { type: String, required: true, unique: true, maxlength: 50 },
-    status: {
-      type: String,
-      enum: ['pending','confirmed','processing','shipped','delivered','cancelled','refunded'],
-      default: 'pending',
-    },
-    paymentStatus: {
-      type: String,
-      enum: ['pending','paid','failed','refunded'],
-      default: 'pending',
-    },
-    paymentMethod: {
-      type: String,
-      enum: ['cod','credit_card','debit_card','upi','net_banking','wallet'],
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       required: true,
     },
+    guestMobile: {
+      type: String,
+    },
+    shiprocketOrderId: {
+      type: String,
+      trim: true,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+
+    shiprocketCheckoutId: {
+      type: String,
+      trim: true,
+    },
+    orderNumber: { type: String, required: true, unique: true },
+
+    currency: { type: String, maxlength: 3, default: "INR" },
     subtotal: { type: Number, required: true },
     taxAmount: { type: Number, default: 0 },
     shippingAmount: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
     totalAmount: { type: Number, required: true },
-    currency: { type: String, maxlength: 3, default: 'INR' },
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "failed", "refunded"],
+      default: "pending",
+    },
+    paymentMethod: { type: String },
+    transactionId: { type: String, trim: true },
+    orderStatus: {
+      type: String,
+      enum: [
+        "created",
+        "confirmed",
+        "processing",
+        "shipped",
+        "delivered",
+        "cancelled",
+        "refunded",
+      ],
+      default: "created",
+    },
+
     notes: String,
     shippedAt: Date,
     deliveredAt: Date,
     cancelledAt: Date,
-    shiprocketOrderId: { type: String, trim: true },
     shippingMethod: { type: String, trim: true },
     shiprocketStatus: { type: String, trim: true },
 
     // reference to your existing userAddress
-    shippingAddressId: { type: mongoose.Schema.Types.ObjectId, ref: 'UserAddress', required: true },
-    billingAddressId: { type: mongoose.Schema.Types.ObjectId, ref: 'UserAddress' },
+    shippingAddress: {
+      firstName: String,
+      lastName: String,
+      mobile: String,
+      email: String,
+      address1: String,
+      address2: String,
+      city: String,
+      state: String,
+      pincode: String,
+      country: String,
+    },
+    billingAddress: {
+      firstName: String,
+      lastName: String,
+      mobile: String,
+      email: String,
+      address1: String,
+      address2: String,
+      city: String,
+      state: String,
+      pincode: String,
+      country: String,
+    },
+    rawShiprocketResponse: mongoose.Schema.Types.Mixed,
+
+    courier: {
+      type: String,
+    },
+    awb: {
+      type: String,
+      trim: true,
+    },
+    shiprocketShipmentId: {
+      type: Number,
+    },
+    shipmentStatus: {
+      type: String,
+    },
+    shipmentStatusCode: {
+      type: Number,
+    },
+    etd: {
+      type: Date,
+    },
+    isReturn: {
+      type: Boolean,
+      default: false,
+    },
+    tracking: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
+    lastWebhookAt: {
+      type: Date,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // ---------------- ORDER ITEM SCHEMA ----------------
 const orderItemSchema = new mongoose.Schema(
   {
-    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
-    productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
-    variantId: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductVariant' },
+    orderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
+      required: true,
+    },
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
+    },
+    productImage: { type: String, maxlength: 500 },
+    variantId: { type: mongoose.Schema.Types.ObjectId, ref: "ProductVariant" },
+    shiprocketVariantId: { type: String, trim: true },
+    title: { type: String, required: true, maxlength: 255 },
+    handle: { type: String, trim: true },
+    sku: { type: String, required: true, maxlength: 100 },
     quantity: { type: Number, required: true },
-    unitPrice: { type: Number, required: true },
-    totalPrice: { type: Number, required: true },
-    productName: { type: String, required: true, maxlength: 255 },
-    productSku: { type: String, required: true, maxlength: 100 },
-    weight: { type: Number }, 
-    dimensions: { length: Number, width: Number, height: Number },
-    imageUrl: { type: String },
+    price: { type: Number, required: true },
+    total: { type: Number, required: true },
+    taxRate: { type: Number, default: 0 },
+    taxAmount: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
+    weight: { type: Number, default: 0 }, // in kg
   },
-  { timestamps: { createdAt: true, updatedAt: false } }
+  { timestamps: { createdAt: true, updatedAt: false } },
 );
 
-export const Order = mongoose.model('Order', orderSchema);
-export const OrderItem = mongoose.model('OrderItem', orderItemSchema);
+orderItemSchema.index({ orderId: 1 });
+orderItemSchema.index({ productId: 1 });
+orderSchema.index({ userId: 1 });
+orderSchema.index({ createdAt: -1 });
+orderSchema.index({ orderStatus: 1 });
+
+
+export const Order = mongoose.model("Order", orderSchema);
+export const OrderItem = mongoose.model("OrderItem", orderItemSchema);

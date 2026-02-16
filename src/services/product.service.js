@@ -4,6 +4,7 @@ import { ProductVariant } from "../models/productVarient.model.js";
 import { ProductImage } from "../models/productImage.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { uploadBufferToCloudinary } from "../utils/cloudinary.js";
+import { syncProductToShiprocket } from "./webhook.service.js";
 
 /* ---------------- CREATE PRODUCT + VARIANTS ---------------- */
 
@@ -59,7 +60,7 @@ export const createProductService = async ({ productData, variants = [] }) => {
             taxRate: variant.taxRate ?? 0,
           },
         ],
-        { session }
+        { session },
       );
 
       variantDocs.push(variantDoc[0]);
@@ -71,6 +72,19 @@ export const createProductService = async ({ productData, variants = [] }) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    // process.nextTick(async () => {
+    //   try {
+    //     const payload = await getShiprocketProductPayload(product._id);
+    //     if (payload) {
+    //       await syncProductToShiprocket(payload);
+    //       console.log(payload)
+    //       console.log("Product synced to Shiprocket in background");
+    //     }
+    //   } catch (error) {
+    //     console.error("Error syncing product to Shiprocket:", error);
+    //   }
+    // });
 
     return { product, variants: variantDocs };
   } catch (err) {
@@ -97,7 +111,7 @@ export const uploadProductImagesService = async ({ productId, files }) => {
     // Upload to Cloudinary
     const cloudRes = await uploadBufferToCloudinary(
       file.buffer,
-      `products/${productId}/${Date.now()}-${file.originalname}`
+      `products/${productId}/${Date.now()}-${file.originalname}`,
     );
 
     // 🟢 PRODUCT IMAGES
@@ -219,7 +233,7 @@ export const updateProductService = async ({
     for (const file of files) {
       const cloudRes = await uploadBufferToCloudinary(
         file.buffer,
-        `products/${productId}/${Date.now()}-${file.originalname}`
+        `products/${productId}/${Date.now()}-${file.originalname}`,
       );
 
       if (file.fieldname === "productImages") {
@@ -442,21 +456,21 @@ export const getProductsShipRocketService = async ({
           handle: "$handle",
           updated_at: "$updatedAt",
           tags: {
-            $reduce:{
-              input: {$ifNull: ["$tags", []]},
+            $reduce: {
+              input: { $ifNull: ["$tags", []] },
               initialValue: "",
               in: {
                 $cond: [
                   { $eq: ["$$value", ""] },
                   "$$this",
-                  { $concat: ["$$value", ", ", "$$this"] }
-                ]
-              }
-            }
+                  { $concat: ["$$value", ", ", "$$this"] },
+                ],
+              },
+            },
           },
           status: "$status",
           created_at: "$createdAt",
-          
+
           // Primary Image Mapping
           image: {
             $let: {
@@ -496,7 +510,7 @@ export const getProductsShipRocketService = async ({
                 weight_unit: "kg",
                 option_values: { Color: "$$v.color", Size: "$$v.size" },
                 grams: "$$v.weight",
-                taxable: { $cond: [{$gt: ["$$v.taxRate", 0]}, true, false] },
+                taxable: { $cond: [{ $gt: ["$$v.taxRate", 0] }, true, false] },
                 image: {
                   $let: {
                     vars: {
@@ -523,23 +537,23 @@ export const getProductsShipRocketService = async ({
 
           // Options Mapping
           options: [
-            { 
-              name: "Color", 
-              values: { 
-                $filter: { 
-                  input: { $setUnion: ["$variants.color"] }, 
-                  cond: { $ne: ["$$this", null] } 
-                } 
-              } 
+            {
+              name: "Color",
+              values: {
+                $filter: {
+                  input: { $setUnion: ["$variants.color"] },
+                  cond: { $ne: ["$$this", null] },
+                },
+              },
             },
-            { 
-              name: "Size", 
-              values: { 
-                $filter: { 
-                  input: { $setUnion: ["$variants.size"] }, 
-                  cond: { $ne: ["$$this", null] } 
-                } 
-              } 
+            {
+              name: "Size",
+              values: {
+                $filter: {
+                  input: { $setUnion: ["$variants.size"] },
+                  cond: { $ne: ["$$this", null] },
+                },
+              },
             },
           ],
         },
@@ -587,7 +601,6 @@ export const getProductListService = async ({
   if (sort === "priceHigh") sortStage = { sortPrice: -1 };
 
   const pipeline = [
-
     /* 1️ MATCH BASE FILTER */
     { $match: baseMatch },
 
@@ -603,21 +616,20 @@ export const getProductListService = async ({
               isActive: true,
               stockQuantity: { $gt: 0 },
               ...(colors.length > 0 && { color: { $in: colors } }),
-              ...(sizes.length > 0 && { size: { $in: sizes } })
-            }
+              ...(sizes.length > 0 && { size: { $in: sizes } }),
+            },
           },
           {
             $project: {
               price: 1,
               salePrice: 1,
-              sku: 1,
               stockQuantity: 1,
-              isDefault: 1
-            }
-          }
+              isDefault: 1,
+            },
+          },
         ],
-        as: "variants"
-      }
+        as: "variants",
+      },
     },
 
     /* 3️ REMOVE PRODUCTS WITHOUT MATCHING VARIANTS */
@@ -634,28 +646,25 @@ export const getProductListService = async ({
                   $filter: {
                     input: "$variants",
                     as: "v",
-                    cond: { $eq: ["$$v.isDefault", true] }
-                  }
+                    cond: { $eq: ["$$v.isDefault", true] },
+                  },
                 },
-                0
-              ]
+                0,
+              ],
             },
-            { $arrayElemAt: ["$variants", 0] }
-          ]
-        }
-      }
+            { $arrayElemAt: ["$variants", 0] },
+          ],
+        },
+      },
     },
 
     /* 5️ COMPUTE SAFE SORT PRICE */
     {
       $addFields: {
         sortPrice: {
-          $ifNull: [
-            "$defaultVariant.salePrice",
-            "$defaultVariant.price"
-          ]
-        }
-      }
+          $ifNull: ["$defaultVariant.salePrice", "$defaultVariant.price"],
+        },
+      },
     },
 
     /* 6️ LOOKUP CATEGORY (Lightweight) */
@@ -665,8 +674,8 @@ export const getProductListService = async ({
         localField: "categoryId",
         foreignField: "_id",
         pipeline: [{ $project: { name: 1 } }],
-        as: "category"
-      }
+        as: "category",
+      },
     },
 
     /* 7️ LOOKUP PRIMARY IMAGE (ONLY 1) */
@@ -678,18 +687,15 @@ export const getProductListService = async ({
           {
             $match: {
               $expr: {
-                $and: [
-                  { $eq: ["$productId", "$$pid"] },
-                  { $eq: ["$isPrimary", true] }
-                ]
-              }
-            }
+                $and: [{ $eq: ["$productId", "$$pid"] }],
+              },
+            },
           },
           { $limit: 1 },
-          { $project: { imageUrl: 1 } }
+          { $project: { imageUrl: 1 } },
         ],
-        as: "primaryImage"
-      }
+        as: "primaryImage",
+      },
     },
 
     /* 8️ SORT */
@@ -710,22 +716,20 @@ export const getProductListService = async ({
               imageUrl: {
                 $ifNull: [
                   { $arrayElemAt: ["$primaryImage.imageUrl", 0] },
-                  "https://via.placeholder.com/500?text=No+Image"
-                ]
+                  "https://via.placeholder.com/500?text=No+Image",
+                ],
               },
               price: "$defaultVariant.price",
               salePrice: "$defaultVariant.salePrice",
               sku: "$defaultVariant.sku",
               stockQuantity: "$defaultVariant.stockQuantity",
-              createdAt: 1
-            }
-          }
+              createdAt: 1,
+            },
+          },
         ],
-        totalCount: [
-          { $count: "count" }
-        ]
-      }
-    }
+        totalCount: [{ $count: "count" }],
+      },
+    },
   ];
 
   const result = await Product.aggregate(pipeline).allowDiskUse(true);
@@ -738,8 +742,8 @@ export const getProductListService = async ({
       total,
       page: sanitizedPage,
       totalPages: Math.ceil(total / sanitizedLimit),
-      collections: products
-    }
+      collections: products,
+    },
   };
 };
 
@@ -756,8 +760,8 @@ export const getProductDetailService = async (identifier) => {
       $match: {
         ...matchQuery,
         isDeleted: false,
-        status: "active"
-      }
+        status: "active",
+      },
     },
 
     /* ---------------- CATEGORY ---------------- */
@@ -767,8 +771,8 @@ export const getProductDetailService = async (identifier) => {
         localField: "categoryId",
         foreignField: "_id",
         pipeline: [{ $project: { name: 1, handle: 1 } }],
-        as: "category"
-      }
+        as: "category",
+      },
     },
 
     /* ---------------- ACTIVE VARIANTS ---------------- */
@@ -780,8 +784,8 @@ export const getProductDetailService = async (identifier) => {
           {
             $match: {
               $expr: { $eq: ["$productId", "$$pid"] },
-              isActive: true
-            }
+              isActive: true,
+            },
           },
           {
             $project: {
@@ -791,12 +795,12 @@ export const getProductDetailService = async (identifier) => {
               size: 1,
               sku: 1,
               stockQuantity: 1,
-              isDefault: 1
-            }
-          }
+              isDefault: 1,
+            },
+          },
         ],
-        as: "variants"
-      }
+        as: "variants",
+      },
     },
 
     /* ---------------- IMAGES ---------------- */
@@ -808,14 +812,14 @@ export const getProductDetailService = async (identifier) => {
           {
             $match: {
               $expr: { $eq: ["$productId", "$$pid"] },
-              isPrimary: true
-            }
+              isPrimary: true,
+            },
           },
           { $limit: 1 },
-          { $project: { imageUrl: 1 } }
+          { $project: { imageUrl: 1 } },
         ],
-        as: "primaryImage"
-      }
+        as: "primaryImage",
+      },
     },
 
     /* ---------------- DEFAULT VARIANT ---------------- */
@@ -829,16 +833,16 @@ export const getProductDetailService = async (identifier) => {
                   $filter: {
                     input: "$variants",
                     as: "v",
-                    cond: { $eq: ["$$v.isDefault", true] }
-                  }
+                    cond: { $eq: ["$$v.isDefault", true] },
+                  },
                 },
-                0
-              ]
+                0,
+              ],
             },
-            { $arrayElemAt: ["$variants", 0] }
-          ]
-        }
-      }
+            { $arrayElemAt: ["$variants", 0] },
+          ],
+        },
+      },
     },
 
     /* ---------------- RELATED PRODUCTS ---------------- */
@@ -848,7 +852,7 @@ export const getProductDetailService = async (identifier) => {
         let: {
           currentId: "$_id",
           categoryId: "$categoryId",
-          brand: "$brand"
+          brand: "$brand",
         },
         pipeline: [
           {
@@ -858,10 +862,10 @@ export const getProductDetailService = async (identifier) => {
                   { $ne: ["$_id", "$$currentId"] },
                   { $eq: ["$categoryId", "$$categoryId"] },
                   { $eq: ["$status", "active"] },
-                  { $eq: ["$isDeleted", false] }
-                ]
-              }
-            }
+                  { $eq: ["$isDeleted", false] },
+                ],
+              },
+            },
           },
           { $sort: { createdAt: -1 } },
           { $limit: 6 },
@@ -875,19 +879,19 @@ export const getProductDetailService = async (identifier) => {
                 {
                   $match: {
                     $expr: { $eq: ["$productId", "$$pid"] },
-                    isDefault: true
-                  }
+                    isDefault: true,
+                  },
                 },
                 {
                   $project: {
                     price: 1,
-                    salePrice: 1
-                  }
+                    salePrice: 1,
+                  },
                 },
-                { $limit: 1 }
+                { $limit: 1 },
               ],
-              as: "defaultVariant"
-            }
+              as: "defaultVariant",
+            },
           },
 
           {
@@ -898,14 +902,14 @@ export const getProductDetailService = async (identifier) => {
                 {
                   $match: {
                     $expr: { $eq: ["$productId", "$$pid"] },
-                    isPrimary: true
-                  }
+                    isPrimary: true,
+                  },
                 },
                 { $limit: 1 },
-                { $project: { imageUrl: 1 } }
+                { $project: { imageUrl: 1 } },
               ],
-              as: "primaryImage"
-            }
+              as: "primaryImage",
+            },
           },
 
           {
@@ -915,12 +919,12 @@ export const getProductDetailService = async (identifier) => {
               handle: 1,
               imageUrl: { $arrayElemAt: ["$primaryImage.imageUrl", 0] },
               price: { $arrayElemAt: ["$defaultVariant.price", 0] },
-              salePrice: { $arrayElemAt: ["$defaultVariant.salePrice", 0] }
-            }
-          }
+              salePrice: { $arrayElemAt: ["$defaultVariant.salePrice", 0] },
+            },
+          },
         ],
-        as: "relatedProducts"
-      }
+        as: "relatedProducts",
+      },
     },
 
     /* ---------------- FINAL SHAPE ---------------- */
@@ -943,9 +947,9 @@ export const getProductDetailService = async (identifier) => {
         category: { $arrayElemAt: ["$category", 0] },
         galleryImage: { $arrayElemAt: ["$primaryImage.imageUrl", 0] },
         variants: 1,
-        relatedProducts: 1
-      }
-    }
+        relatedProducts: 1,
+      },
+    },
   ]);
 
   if (!result.length) {
@@ -973,10 +977,223 @@ export const deleteProductService = async ({
     const product = await Product.findByIdAndUpdate(
       productId,
       { isDeleted: true, isActive: false },
-      { new: true }
+      { new: true },
     );
     if (!product) throw new ApiError(404, "Product not found");
     return { message: "Product soft deleted" };
   }
 };
 
+/* ---------------- SHIPROCKET PAYLOAD FORMATTER ---------------- */
+export const getShiprocketProductPayload = async (productId) => {
+  try {
+    const result = await Product.aggregate([
+      {
+        $match: {
+          _id: new mongoose.Types.ObjectId(productId),
+          isDeleted: false,
+        },
+      },
+
+      /* 1️⃣ Lookup Active Variants Only */
+      {
+        $lookup: {
+          from: "productvariants",
+          let: { pid: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$productId", "$$pid"] },
+                isActive: true,
+              },
+            },
+          ],
+          as: "variantsData",
+        },
+      },
+
+      /* 2️⃣ Lookup All Images */
+      {
+        $lookup: {
+          from: "productimages",
+          localField: "_id",
+          foreignField: "productId",
+          as: "allImages",
+        },
+      },
+
+      /* 3️⃣ Remove product if no active variants */
+      { $match: { "variantsData.0": { $exists: true } } },
+
+      /* 4️⃣ Format for Shiprocket */
+      {
+        $project: {
+          _id: 0,
+
+          id: "$shiprocketProductId",
+          title: "$name",
+          body_html: "$description",
+          vendor: "$brand",
+          product_type: "Cult Products",
+
+          created_at: "$createdAt",
+          updated_at: "$updatedAt",
+          handle: "$handle",
+
+          /* ✅ Status Mapping */
+          status: {
+            $cond: [{ $eq: ["$status", "active"] }, "active", "draft"],
+          },
+
+          /* Tags formatted as comma string */
+          tags: {
+            $reduce: {
+              input: { $ifNull: ["$tags", []] },
+              initialValue: "",
+              in: {
+                $concat: [
+                  "$$value",
+                  {
+                    $cond: [{ $eq: ["$$value", ""] }, "", ", "],
+                  },
+                  "$$this",
+                ],
+              },
+            },
+          },
+
+          /* Product Primary Image */
+          image: {
+            $let: {
+              vars: {
+                productImages: {
+                  $filter: {
+                    input: "$allImages",
+                    as: "img",
+                    cond: { $eq: ["$$img.variantId", null] },
+                  },
+                },
+              },
+              in: {
+                src: { $arrayElemAt: ["$$productImages.imageUrl", 0] },
+              },
+            },
+          },
+
+          /* Variants */
+          variants: {
+            $map: {
+              input: "$variantsData",
+              as: "v",
+              in: {
+                id: "$$v.shiprocketVariantId",
+
+                title: {
+                  $trim: {
+                    input: {
+                      $concat: [
+                        { $ifNull: ["$$v.color", ""] },
+                        " ",
+                        { $ifNull: ["$$v.size", ""] },
+                      ],
+                    },
+                  },
+                },
+
+                /* ✅ Correct Price Logic */
+                price: {
+                  $toString: {
+                    $ifNull: ["$$v.salePrice", "$$v.price"],
+                  },
+                },
+
+                compare_at_price: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $ifNull: ["$$v.salePrice", false] },
+                        { $lt: ["$$v.salePrice", "$$v.price"] },
+                      ],
+                    },
+                    { $toString: "$$v.price" },
+                    null,
+                  ],
+                },
+
+                sku: "$$v.sku",
+                created_at: "$$v.createdAt",
+                updated_at: "$$v.updatedAt",
+
+                quantity: "$$v.stockQuantity",
+                taxable: true,
+
+                grams: { $ifNull: ["$$v.weight", 0] },
+
+                /* ✅ Safe Weight Conversion */
+                weight: {
+                  $cond: [
+                    { $ifNull: ["$$v.weight", false] },
+                    { $divide: ["$$v.weight", 1000] },
+                    0,
+                  ],
+                },
+
+                weight_unit: "kg",
+
+                option_values: {
+                  Color: "$$v.color",
+                  Size: "$$v.size",
+                },
+
+                /* Variant Specific Image */
+                image: {
+                  $let: {
+                    vars: {
+                      vImages: {
+                        $filter: {
+                          input: "$allImages",
+                          as: "img",
+                          cond: {
+                            $eq: ["$$img.variantId", "$$v._id"],
+                          },
+                        },
+                      },
+                    },
+                    in: {
+                      src: {
+                        $arrayElemAt: ["$$vImages.imageUrl", 0],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+
+          /* Options summary */
+          options: [
+            {
+              name: "Color",
+              values: {
+                $setUnion: ["$variantsData.color"],
+              },
+            },
+            {
+              name: "Size",
+              values: {
+                $setUnion: ["$variantsData.size"],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    if (!result.length) return null;
+
+    return result[0];
+  } catch (error) {
+    console.error("Shiprocket product formatting error:", error);
+    throw error;
+  }
+};
