@@ -1,0 +1,3 @@
+2026-02-20 11:55:27:5527 [35mhttp[39m: [35mPOST /api/v1/auth/login 200 433 - 267.470 ms[39m
+2026-02-20 12:00:45:045 [35mhttp[39m: [35mGET /api/v1/products/ 200 887 - 48.955 ms[39m
+2026-02-20 12:01:15:115 [35mhttp[39m: [35mGET /api/v1/products/premium-ergonomic-office-chair 200 1471 - 205.571 ms[39m
