@@ -37,7 +37,6 @@ export const getAllCategories = async ({ page = 1, limit = 100 }) => {
   ]);
 
   const collections = categories.map((cat) => ({
-    _id: cat._id,
     id: cat.shiprocketCategoryId,
     title: cat.name,
     body_html: cat.description || "",
@@ -264,7 +263,7 @@ export const getProductsByCategory = async ({
 
     {
       $project: {
-        _id: 1,
+        _id: 0,
         id: "$shiprocketProductId",
         title: "$name",
         body_html: "$description",

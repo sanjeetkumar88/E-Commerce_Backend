@@ -447,7 +447,7 @@ export const getProductsShipRocketService = async ({
       /* ---------------- PROJECT OUTPUT (Unified Format) ---------------- */
       {
         $project: {
-          _id: 1,
+          _id: 0,
           id: "$shiprocketProductId",
           title: "$name",
           body_html: "$description",
@@ -499,7 +499,6 @@ export const getProductsShipRocketService = async ({
               input: "$variants",
               as: "v",
               in: {
-                _id: "$$v._id",
                 id: "$$v.shiprocketVariantId",
                 title: { $concat: ["$$v.color", " / ", "$$v.size"] },
                 price: { $toString: "$$v.salePrice" },
