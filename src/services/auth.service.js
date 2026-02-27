@@ -62,7 +62,7 @@ export const registerUser = async ({
 /*                                  LOGIN USER                                 */
 /* -------------------------------------------------------------------------- */
 
-export const loginUser = async ({ email, password }) => {
+export const loginUser = async ({ email, password,phoneNumber }) => {
   const user = await User.findOne({ email });
 
   if (!user) {

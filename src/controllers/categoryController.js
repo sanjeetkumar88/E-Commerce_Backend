@@ -14,7 +14,7 @@ export const getProductsByCategoryShipRocket = async (req, res, next) => {
 
     
     const products = await categoryService.getProductsByCategory(
-      { categoryId: req.params.categoryId,
+      { id: req.params.categoryId,
         page: req.query.page,
         limit: req.query.limit
        }
@@ -205,11 +205,13 @@ export const getProductsByCategory = async (req, res, next) => {
       colors, 
       sizes, 
       isFeatured, 
-      categoryHandle, 
+      categoryhandle, 
       categoryId 
     } = req.query;
 
-    const result = await productService.getProductListByCategoryHandleService({
+   
+
+    const result = await categoryService.getProductListByCategoryHandleService({
       page,
       limit,
       search,
@@ -218,7 +220,7 @@ export const getProductsByCategory = async (req, res, next) => {
       colors: colors ? colors.split(",") : [],
       sizes: sizes ? sizes.split(",") : [],
       isFeatured: isFeatured === "true",
-      categoryHandle,
+      categoryhandle,
       categoryId
     });
 

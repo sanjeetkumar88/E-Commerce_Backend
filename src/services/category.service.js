@@ -389,7 +389,7 @@ export const getProductListByCategoryHandleService = async ({
   colors = [],
   sizes = [],
   isFeatured = false,
-  categoryHandle = null,
+  categoryhandle = null,
   categoryId = null,
 }) => {
   const sanitizedPage = Math.max(1, parseInt(page) || 1);
@@ -397,6 +397,8 @@ export const getProductListByCategoryHandleService = async ({
   const skip = (sanitizedPage - 1) * sanitizedLimit;
 
   /* ---------------- CATEGORY FILTER ---------------- */
+
+
 
   let categoryMatch = {};
 
@@ -429,7 +431,7 @@ export const getProductListByCategoryHandleService = async ({
     { $match: baseMatch },
 
     /* 2️⃣ IF categoryHandle IS PROVIDED → MATCH VIA LOOKUP */
-    ...(categoryHandle
+    ...(categoryhandle
       ? [
           {
             $lookup: {
@@ -441,7 +443,7 @@ export const getProductListByCategoryHandleService = async ({
           },
           {
             $match: {
-              "categoryData.handle": categoryHandle,
+              "categoryData.handle": categoryhandle,
             },
           },
         ]

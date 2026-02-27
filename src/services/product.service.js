@@ -564,7 +564,7 @@ export const getProductsShipRocketService = async ({
   return {
     data: {
       total,
-      collections: products, // Renamed from products to collections for consistency
+      products: products, // Renamed from products to collections for consistency
     },
   };
 };
