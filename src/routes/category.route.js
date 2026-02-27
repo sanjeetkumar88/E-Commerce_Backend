@@ -41,7 +41,7 @@ router
 // /api/products/category?categoryhandle=decor&sort=price_asc
 router.route("/products").get(getProductsByCategory);
 
-router.route("/sync/:id").get(getProductsByCategoryShipRocket);
+router.route("/sync/:categoryId").get(getProductsByCategoryShipRocket);
 
 /*----------------------CATEGORY BREADCRUMBS------------------*/
 router.route("/:id/breadcrumbs").get(getCategoryBreadcrumbs);

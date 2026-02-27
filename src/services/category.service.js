@@ -209,8 +209,20 @@ export const getProductsByCategory = async ({
   const skip = (sanitizedPage - 1) * sanitizedLimit;
 
   // 2. Build the Match Query
+   const category = await Category.findOne({
+    shiprocketCategoryId: categoryId,
+  }).select("_id");
+
+  if (!category) {
+    return {
+      data: {
+        total: 0,
+        products: [],
+      },
+    };
+  }
   const matchQuery = {
-    categoryId: new mongoose.Types.ObjectId(categoryId),
+    categoryId: new mongoose.Types.ObjectId(category._id),
     isDeleted: false,
   };
 

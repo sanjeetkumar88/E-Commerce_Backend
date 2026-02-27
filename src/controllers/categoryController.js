@@ -14,7 +14,7 @@ export const getProductsByCategoryShipRocket = async (req, res, next) => {
 
     
     const products = await categoryService.getProductsByCategory(
-      { id: req.params.categoryId,
+      { categoryId: req.params.categoryId,
         page: req.query.page,
         limit: req.query.limit
        }

@@ -37,3 +37,11 @@
 2026-02-27 13:43:34:4334 [35mhttp[39m: [35mGET /api/v1/categories/products 200 772 - 108.428 ms[39m
 2026-02-27 13:44:14:4414 [35mhttp[39m: [35mGET /api/v1/categories/ 200 327 - 197.358 ms[39m
 2026-02-27 13:44:44:4444 [35mhttp[39m: [35mGET /api/v1/categories/products?categoryhandle=pant 200 466 - 91.390 ms[39m
+2026-02-27 13:47:33:4733 [35mhttp[39m: [35mGET /api/v1/categories/sync/12333 200 34 - 167.781 ms[39m
+2026-02-27 13:49:08:498 [35mhttp[39m: [35mGET /api/v1/categories/sync/12333 404 167 - 28.622 ms[39m
+2026-02-27 13:49:29:4929 [35mhttp[39m: [35mGET /api/v1/categories/sync/12333 404 167 - 4.438 ms[39m
+2026-02-27 13:49:53:4953 [35mhttp[39m: [35mGET /api/v1/categories/sync/12333 500 1323 - 31.809 ms[39m
+2026-02-27 13:50:05:505 [35mhttp[39m: [35mGET /api/v1/categories/sync/1233332 500 1323 - 5.869 ms[39m
+2026-02-27 13:50:38:5038 [35mhttp[39m: [35mGET /api/v1/categories/sync/770616750 500 1323 - 2.919 ms[39m
+2026-02-27 13:54:40:5440 [35mhttp[39m: [35mGET /api/v1/categories/sync/770616750 500 1403 - 21.456 ms[39m
+2026-02-27 13:57:09:579 [35mhttp[39m: [35mGET /api/v1/categories/sync/770616750 500 679 - 148.515 ms[39m
