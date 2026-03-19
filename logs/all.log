@@ -45,3 +45,14 @@
 2026-02-27 13:50:38:5038 [35mhttp[39m: [35mGET /api/v1/categories/sync/770616750 500 1323 - 2.919 ms[39m
 2026-02-27 13:54:40:5440 [35mhttp[39m: [35mGET /api/v1/categories/sync/770616750 500 1403 - 21.456 ms[39m
 2026-02-27 13:57:09:579 [35mhttp[39m: [35mGET /api/v1/categories/sync/770616750 500 679 - 148.515 ms[39m
+2026-02-27 13:57:46:5746 [35mhttp[39m: [35mGET /api/v1/categories/sync/770616750 200 1747 - 271.773 ms[39m
+2026-03-05 16:48:50:4850 [35mhttp[39m: [35mGET /api/v1/cart 401 1154 - 6.738 ms[39m
+2026-03-05 16:48:59:4859 [35mhttp[39m: [35mPOST /api/v1/auth/login 200 437 - 385.633 ms[39m
+2026-03-05 16:49:04:494 [35mhttp[39m: [35mGET /api/v1/cart 200 145 - 123.181 ms[39m
+2026-03-05 16:52:35:5235 [35mhttp[39m: [35mGET /api/v1/cart 200 145 - 98.568 ms[39m
+2026-03-05 16:52:43:5243 [35mhttp[39m: [35mPOST /api/v1/cart 200 114 - 607.011 ms[39m
+2026-03-05 16:52:50:5250 [35mhttp[39m: [35mGET /api/v1/cart 200 796 - 337.237 ms[39m
+2026-03-05 16:56:22:5622 [35mhttp[39m: [35mPOST /api/v1/checkout/create-checkout-session 500 477 - 1233.656 ms[39m
+2026-03-05 16:59:17:5917 [35mhttp[39m: [35mPOST /api/v1/checkout/create-checkout-session 500 477 - 1854.930 ms[39m
+2026-03-05 17:00:11:011 [35mhttp[39m: [35mPOST /api/v1/checkout/create-checkout-session 200 129 - 1378.992 ms[39m
+2026-03-05 17:08:33:833 [35mhttp[39m: [35mPOST /api/v1/checkout/create-checkout-session 200 129 - 1695.448 ms[39m

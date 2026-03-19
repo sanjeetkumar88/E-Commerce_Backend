@@ -48,8 +48,8 @@ export const createShiprocketCheckoutSession = async (
       process.env.SHIPROCKET_API_SECRET,
     );
 
-    console.log("shiprocket secret", process.env.SHIPROCKET_API_SECRET);
-    console.log("shiprocket payload", signature);
+    // console.log("shiprocket secret", process.env.SHIPROCKET_API_SECRET);
+    // console.log("shiprocket payload", signature);
 
     const response = await axios.post(CHECKOUT_URL, payload, {
       headers: {
@@ -59,8 +59,9 @@ export const createShiprocketCheckoutSession = async (
 
       },
     });
+    console.log("Shiprocket Checkout Response:", response.data);
 
-    if (!response.data?.token) {
+    if (!response.data?.result?.token) {
       throw new ApiError(500, "Failed to generate checkout token");
     }
 

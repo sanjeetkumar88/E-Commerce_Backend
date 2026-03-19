@@ -3,6 +3,7 @@ import {
   loginUser,
   refreshAccessToken,
   logoutUser,
+  loginUserWithPhone,
 } from "../services/auth.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import timeToMs from "../utils/time.util.js";
@@ -58,7 +59,7 @@ export const register = async (req, res, next) => {
 
 export const login = async (req, res, next) => {
   try {
-    const { user, accessToken, refreshToken } = await loginUser(req.body);
+    const { user, accessToken, refreshToken } = await loginUserWithPhone(req.body.phoneNumber);
 
     const safeUser = user.toObject();
     delete safeUser.password;
@@ -79,6 +80,8 @@ export const login = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 /* -------------------------------------------------------------------------- */
 /*                              REFRESH TOKEN                                  */

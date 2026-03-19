@@ -21,6 +21,7 @@ const generateTokens = async (user) => {
 
   // Store only HASH of refresh token
   user.refreshTokenHash = hashToken(refreshToken);
+  user.lastLoginAt = new Date();
   await user.save({ validateBeforeSave: false });
 
   return { accessToken, refreshToken };
@@ -85,6 +86,32 @@ export const loginUser = async ({ email, password,phoneNumber }) => {
 
   return { user, accessToken, refreshToken };
 };
+
+export const loginUserWithPhone = async (phoneNumber) =>{
+  let user = await User.findOne({ phoneNumber, isDeleted: false });
+  let isNewUser = false;
+
+  if (!user) {
+    user = await User.create({
+      phoneNumber,
+      role: "customer",
+      isActive: true,
+    });
+    isNewUser = true;
+  } else {
+    if (!user.isActive) {
+      const error = new Error("Account is deactivated. Contact support.");
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  const { accessToken, refreshToken } = await generateTokens(user);
+
+  await user.save({ validateBeforeSave: false });
+
+  return { user, isNewUser, accessToken, refreshToken };
+}
 
 /* -------------------------------------------------------------------------- */
 /*                           REFRESH ACCESS TOKEN                              */
