@@ -3,10 +3,6 @@ import { ApiError } from "../utils/ApiError.js";
 import { generateHmac } from "../utils/shiprocket.js";
 
 const BASE_URL = "https://apiv2.shiprocket.in/v1/external";
-// const CHECKOUT_URL =
-//   process.env.NODE_ENV === "development"
-//     ? "https://fastrr-api-dev.pickrr.com/api/v1/access-token/checkout"
-//     : "https://checkout-api.shiprocket.com/api/v1/access-token/checkout";
 
 const CHECKOUT_URL = "https://checkout-api.shiprocket.com/api/v1/access-token/checkout";
 
@@ -14,6 +10,7 @@ export const createShiprocketCheckoutSession = async (
   cartItems,
   redirectUrl,
   user = null,
+  orderReferenceId = null,
 ) => {
   try {
     if (!Array.isArray(cartItems) || !cartItems.length) {
@@ -39,6 +36,7 @@ export const createShiprocketCheckoutSession = async (
       cart_data:{items: shiprocketItems},
       redirect_url: redirectUrl,
       timestamp: new Date().toISOString(),
+      order_refrence_id: orderReferenceId,
     };
 
     const payloadString = JSON.stringify(payload);

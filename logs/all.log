@@ -282,3 +282,12 @@
 2026-03-21 04:40:37:4037 [35mhttp[39m: [35mPOST /api/v1/checkout/create-checkout-session 200 314 - 939.919 ms[39m
 2026-03-21 04:41:53:4153 [35mhttp[39m: [35mPOST /api/v1/auth/refresh-token 401 422 - 49.058 ms[39m
 2026-03-21 04:41:56:4156 [35mhttp[39m: [35mPOST /api/v1/auth/refresh-token 401 422 - 70.379 ms[39m
+2026-03-21 04:59:59:5959 [35mhttp[39m: [35mPOST /api/v1/webhook//checkoutOrder 404 169 - 16.485 ms[39m
+2026-03-21 05:00:16:016 [35mhttp[39m: [35mPOST /api/v1/webhook/checkoutOrder 500 44 - 67.462 ms[39m
+2026-03-21 05:03:04:34 [35mhttp[39m: [35mOPTIONS /api/v1/auth/login 204 0 - 0.940 ms[39m
+2026-03-21 05:03:05:35 [35mhttp[39m: [35mPOST /api/v1/auth/login 200 383 - 385.667 ms[39m
+2026-03-21 05:03:05:35 [35mhttp[39m: [35mGET /api/v1/products/featured?limit=6 404 438 - 74.279 ms[39m
+2026-03-21 05:03:05:35 [35mhttp[39m: [35mGET /api/v1/products?limit=8&sort=newest 304 - - 87.541 ms[39m
+2026-03-21 05:03:05:35 [35mhttp[39m: [35mGET /api/v1/cart 304 - - 377.554 ms[39m
+2026-03-21 05:03:12:312 [35mhttp[39m: [35mPOST /api/v1/checkout/create-checkout-session 200 314 - 1181.524 ms[39m
+2026-03-21 05:15:50:1550 [35mhttp[39m: [35mPOST /api/v1/auth/refresh-token 401 422 - 66.508 ms[39m

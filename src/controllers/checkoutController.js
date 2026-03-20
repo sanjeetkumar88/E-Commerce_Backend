@@ -149,6 +149,7 @@ export const createCheckoutSession = async (req, res, next) => {
       shiprocketItems,
       redirectUrl,
       user,
+      orderReferenceId = newOrder._id.toString()
     );
 
     console.log("Shiprocket checkout response:", checkout.response.result.data.order_id);

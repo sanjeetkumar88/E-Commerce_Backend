@@ -11,7 +11,6 @@ export const shiprocketWebhookController = async (req, res) => {
   try {
     console.log("📦 Webhook received");
 
-    // 🔐 Optional security check
     const apiKey = req.headers["x-api-key"];
     if (apiKey && apiKey !== "mysecret123") {
       return res.status(401).json({ message: "Unauthorized" });

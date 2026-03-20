@@ -34,32 +34,8 @@ import {Order} from "../models/order.model.js";
 
 export const processShiprocketWebhook = async (payload) => {
   try {
-    const event = payload?.event;
-    const data = payload?.data;
 
-    if (!data) {
-      throw new Error("Invalid webhook payload");
-    }
-
-    const orderId = data?.order_id;
-
-    if (!orderId) {
-      throw new Error("Missing order_id");
-    }
-
-    // 🔥 Prevent duplicate orders
-    const existing = await Order.findOne({ orderId });
-
-    if (existing) {
-      console.log("⚠️ Order already exists:", orderId);
-
-      // Optional: update status
-      existing.status = data.status || existing.status;
-      existing.paymentStatus = data.payment_status || existing.paymentStatus;
-
-      await existing.save();
-      return existing;
-    }
+    
 
     
 
