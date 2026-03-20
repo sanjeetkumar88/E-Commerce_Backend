@@ -180,14 +180,15 @@ export const deleteProduct = async (req, res, next) => {
 /* ---------------- FEATURED PRODUCTS ---------------- */
 export const featuredProducts = async (req, res, next) => {
   try {
-    const limit = parseInt(req.query.limit) || 10;
-    const products = await productService.featuredProductsService(limit);
+    console.log("Fetching featured products with query:", req.query);
+    const {limit, page} = req.query;
+    const products = await productService.getProductListService({ limit, page});
     res.status(200).json(new ApiResponse(true, "Featured products fetched", products));
   } catch (err) {
     next(err);
   }
 };
-
+  
 /* ---------------- POPULAR PRODUCTS ---------------- */
 export const popularProducts = async (req, res, next) => {
   try {

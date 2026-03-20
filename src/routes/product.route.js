@@ -29,16 +29,15 @@ router.route("/sync").get(getProductsShipRocket);
 // - Sorting (?sort=priceLow)
 // - Filtering (?colors=red,blue&sizes=XL)
 // - Pagination (?page=2&limit=12)
+// - isFeatured (?isFeatured=true)
+// - newest (?sort=newest)
+
 router.route("/").get(getProducts);
+
+
 
 // Get product by ID
 router.route("/:identifier").get(getProductDetail);
-
-// Featured products
-router.route("/featured").get(featuredProducts);
-
-// Popular products
-router.route("/popular").get(popularProducts);
 
 /* -------------------------------------------------------------------------- */
 /*                              ADMIN ROUTES                                   */
@@ -47,7 +46,7 @@ router.route("/popular").get(popularProducts);
 // Create product
 router.route("/").post(
   verifyJWT,
-  isAdmin, // handles multiple uploaded files
+  isAdmin,
   createProduct,
 );
 

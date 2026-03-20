@@ -23,6 +23,10 @@ const orderSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    shiprocketCheckoutOrderId:{
+      type: String,
+      trim: true,
+    },
     orderNumber: { type: String, required: true, unique: true },
 
     currency: { type: String, maxlength: 3, default: "INR" },

@@ -47,6 +47,6 @@ router.route("/sync/:categoryId").get(getProductsByCategoryShipRocket);
 router.route("/:id/breadcrumbs").get(getCategoryBreadcrumbs);
 
 /*----------------------CATEGORY TREE------------------*/
-router.route("/tree").get(verifyJWT, isAdmin, getCategoryTree);
+router.route("/tree").get(getCategoryTree);
 
 export default router;

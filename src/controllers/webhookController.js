@@ -1,46 +1,40 @@
 import mongoose from "mongoose";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import { getShiprocketProductPayload } from "../services/product.service.js";
-import { syncProductToShiprocket } from "../services/webhook.service.js";
 
-export const syncProductToShiprocketController = async (req, res, next) => {
+
+// controllers/webhook.controller.js
+
+import { processShiprocketWebhook } from "../services/webhook.service.js";
+
+export const shiprocketWebhookController = async (req, res) => {
   try {
-    const { productId } = req.params;
+    console.log("📦 Webhook received");
 
-    // 1️ Validate productId
-    if (!mongoose.Types.ObjectId.isValid(productId)) {
-      return next(new ApiError(400, "Invalid product ID"));
+    // 🔐 Optional security check
+    const apiKey = req.headers["x-api-key"];
+    if (apiKey && apiKey !== "mysecret123") {
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // 2️ Generate Shiprocket formatted payload
-    const payload = await getShiprocketProductPayload(productId);
+    const payload = req.body;
 
-    if (!payload) {
-      return next(
-        new ApiError(404, "Product not found or no active variants available")
-      );
-    }
+    console.log("Payload:", payload);
 
-    console.log("Generated Shiprocket Payload:", payload);
+    await processShiprocketWebhook(payload);
 
-    // 3️ Call Shiprocket webhook
-    const shiprocketResponse = await syncProductToShiprocket(payload);
-
-    // 4️ Send structured response
-    return res.status(200).json(
-      new ApiResponse(
-        200,
-        {
-          productId,
-          shiprocketProductId: payload.id,
-          shiprocketResponse,
-        },
-        "Product synced successfully with Shiprocket"
-      )
-    );
+    // ✅ VERY IMPORTANT (Shiprocket expects 200)
+    return res.status(200).json({
+      success: true,
+      message: "Webhook processed",
+    });
 
   } catch (error) {
-    return next(error);
+    console.error("❌ Controller Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Webhook failed",
+    });
   }
 };

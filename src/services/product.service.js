@@ -4,7 +4,6 @@ import { ProductVariant } from "../models/productVarient.model.js";
 import { ProductImage } from "../models/productImage.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { uploadBufferToCloudinary } from "../utils/cloudinary.js";
-import { syncProductToShiprocket } from "./webhook.service.js";
 
 /* ---------------- CREATE PRODUCT + VARIANTS ---------------- */
 
@@ -574,7 +573,7 @@ export const getProductListService = async ({
   page = 1,
   limit = 12,
   search = "",
-  sort = "newest", // newest | priceLow | priceHigh
+  sort = "newest",
   colors = [],
   sizes = [],
   isFeatured = false,
@@ -1196,3 +1195,5 @@ export const getShiprocketProductPayload = async (productId) => {
     throw error;
   }
 };
+
+

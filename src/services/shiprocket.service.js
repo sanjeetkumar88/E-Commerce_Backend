@@ -66,9 +66,7 @@ export const createShiprocketCheckoutSession = async (
     }
 
     return {
-      token: response.data.token,
-      checkoutId: response.data.checkout_id,
-      expiresAt: response.data.expires_at,
+      response: response.data,
     };
   } catch (error) {
     console.error(

@@ -143,7 +143,7 @@ export const createCheckoutSession = async (req, res, next) => {
     await newOrder.save({ session });
 
     // 5️ Call Shiprocket
-    const redirectUrl = `${process.env.FRONTEND_URL}/checkout-success?orderId=${newOrder._id}`;
+    const redirectUrl = `/checkout-success?orderId=${newOrder._id}`;
 
     const checkout = await createShiprocketCheckoutSession(
       shiprocketItems,
@@ -151,7 +151,8 @@ export const createCheckoutSession = async (req, res, next) => {
       user,
     );
 
-    
+    console.log("Shiprocket checkout response:", checkout.response.result.data.order_id);
+    newOrder.shiprocketCheckoutOrderId = checkout.response.result.data.order_id;
     newOrder.shiprocketCheckoutId = checkout.checkoutId;
     await newOrder.save({ session });
 
@@ -161,10 +162,7 @@ export const createCheckoutSession = async (req, res, next) => {
     return res.status(200).json(
       new ApiResponse(
         200,
-        {
-          checkoutId: checkout.checkoutId,
-          orderId: newOrder._id,
-        },
+        checkout.response,
         "Checkout session created successfully",
       ),
     );

@@ -10,8 +10,7 @@ const app = express();
 app.use(morganMiddleware);
 
 app.use(cors({
-  origin: "http://localhost:3000",
-  origin: "https://oinori.in/",
+  origin: ["https://oinori.in/","http://localhost:8080"],
   credentials: true,
 }));
 
