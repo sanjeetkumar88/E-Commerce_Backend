@@ -36,7 +36,7 @@ export const createShiprocketCheckoutSession = async (
       cart_data:{items: shiprocketItems},
       redirect_url: redirectUrl,
       timestamp: new Date().toISOString(),
-      order_refrence_id: orderReferenceId,
+      order_reference_id: orderReferenceId,
     };
 
     const payloadString = JSON.stringify(payload);

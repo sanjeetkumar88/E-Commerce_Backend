@@ -297,3 +297,4 @@
 2026-03-21 05:26:20:2620 [35mhttp[39m: [35mGET /api/v1/products?limit=8&sort=newest 304 - - 75.801 ms[39m
 2026-03-21 05:26:20:2620 [35mhttp[39m: [35mGET /api/v1/cart 304 - - 337.606 ms[39m
 2026-03-21 05:26:28:2628 [35mhttp[39m: [35mPOST /api/v1/checkout/create-checkout-session 500 346 - 584.779 ms[39m
+2026-03-21 05:29:24:2924 [35mhttp[39m: [35mPOST /api/v1/checkout/create-checkout-session 200 314 - 1137.124 ms[39m

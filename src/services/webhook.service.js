@@ -37,9 +37,7 @@ export const processShiprocketWebhook = async (payload) => {
 
     
 
-    
-
-    console.log("✅ Order saved:", orderId);
+  
 
     return data;
   } catch (error) {
