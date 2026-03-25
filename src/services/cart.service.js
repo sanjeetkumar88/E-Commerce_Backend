@@ -355,14 +355,33 @@ export const mergeGuestCartService = async (
 }; 
 
 export const clearCart = async (userId) => {
-  const cart = await Cart.findOne({ userId });
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  if(!cart){
-    return { success: true, message: "Cart is already empty" };
+  try {
+    const cart = await Cart.findOne({ userId }).session(session);
+
+    if (!cart) {
+      await session.commitTransaction();
+      session.endSession();
+      return { success: true, message: "Cart already empty" };
+    }
+
+    // 1. Delete cart items
+    await CartItem.deleteMany({ cartId: cart._id }).session(session);
+
+    // 2. Delete cart itself
+    await Cart.deleteOne({ _id: cart._id }).session(session);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return { success: true, message: "Cart deleted completely" };
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    throw new ApiError(500, "Failed to clear cart");
   }
-
-  await CartItem.deleteMany({ cartId: cart._id });
-  return { success: true, message: "Cart cleared successfully" };
 };
-
 

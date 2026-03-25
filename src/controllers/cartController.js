@@ -1,3 +1,4 @@
+import { use } from "react";
 import * as cartService from "../services/cart.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
@@ -98,3 +99,19 @@ export const mergeGuestCart = async (req, res, next) => {
     next(error);
   }
 };
+
+
+export const clearCart = async (req, res, next) => {
+  try {
+    
+    const userId = req.user._id;
+    const result = await cartService.clearCart(userId);
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, result, "Cart cleared"));
+  } catch (error) {
+    next(error);
+  }
+};
+

@@ -4,7 +4,8 @@ import {
   addToCart, 
   updateCartQuantity, 
   removeCartItem, 
-  mergeGuestCart 
+  mergeGuestCart,
+  clearCart,
 } from "../controllers/cartController.js";
 import { verifyJWT } from "../middlewares/authMiddleware.js";
 
@@ -20,8 +21,10 @@ router.route("/")
 router.route("/merge")
   .post(mergeGuestCart); // POST /api/v1/cart/merge
 
+router.route("/clear").delete(clearCart); // DELETE /api/v1/cart/clear
+
+router.route("/remove/:cartItemId").delete(removeCartItem); // DELETE /api/v1/cart/remove/ID
 router.route("/item/:cartItemId")
-  .patch(updateCartQuantity) // PATCH /api/v1/cart/item/ID
-  .delete(removeCartItem);   // DELETE /api/v1/cart/item/ID
+  .patch(updateCartQuantity)   // PATCH /api/v1/cart/item/ID
 
 export default router; 
