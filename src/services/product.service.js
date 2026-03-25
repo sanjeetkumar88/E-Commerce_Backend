@@ -761,8 +761,6 @@ export const getProductListServiceAdmin = async ({
   // Base match (INDEXED)
   const baseMatch = {
     isDeleted: false,
-    status: "active",
-    ...(isFeatured && { isFeatured: true }),
   };
 
   if (search?.trim()) {
@@ -777,7 +775,6 @@ export const getProductListServiceAdmin = async ({
   const pipeline = [
     /* 1️ MATCH BASE FILTER */
     { $match: baseMatch },
-
     /* 2️ LOOKUP FILTERED VARIANTS  */
     {
       $lookup: {
@@ -787,7 +784,6 @@ export const getProductListServiceAdmin = async ({
           {
             $match: {
               $expr: { $eq: ["$productId", "$$pid"] },
-              stockQuantity: { $gt: 0 },
               ...(colors.length > 0 && { color: { $in: colors } }),
               ...(sizes.length > 0 && { size: { $in: sizes } }),
             },

@@ -373,3 +373,9 @@
 2026-03-25 11:31:37:3137 [35mhttp[39m: [35mPOST /api/v1/auth/login 200 383 - 473.350 ms[39m
 2026-03-25 11:31:44:3144 [35mhttp[39m: [35mPOST /api/v1/cart 200 114 - 716.655 ms[39m
 2026-03-25 11:47:20:4720 [35mhttp[39m: [35mGET /api/v1/products/ 200 1303 - 370.708 ms[39m
+2026-03-25 12:04:54:454 [35mhttp[39m: [35mGET /api/v1/products/admin 200 1303 - 351.023 ms[39m
+2026-03-25 12:05:23:523 [35mhttp[39m: [35mGET /api/v1/products/admin 200 1303 - 148.706 ms[39m
+2026-03-25 12:11:51:1151 [35mhttp[39m: [35mGET /api/v1/products/admin 200 1303 - 374.714 ms[39m
+2026-03-25 12:17:15:1715 [35mhttp[39m: [35mGET /api/v1/products/admin 200 1303 - 242.971 ms[39m
+2026-03-25 12:18:55:1855 [35mhttp[39m: [35mGET /api/v1/products/admin 200 3936 - 312.263 ms[39m
+2026-03-25 12:20:25:2025 [35mhttp[39m: [35mGET /api/v1/products/admin 200 3936 - 241.339 ms[39m
