@@ -205,6 +205,7 @@ export const getProductsByCategory = async (req, res, next) => {
       colors, 
       sizes, 
       isFeatured, 
+      
     } = req.query;
     const categoryhandle = req.params.categoryhandle;
     const categoryId = req.query.categoryId; 

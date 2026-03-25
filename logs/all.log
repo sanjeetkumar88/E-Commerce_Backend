@@ -389,3 +389,4 @@
 2026-03-25 12:52:57:5257 [35mhttp[39m: [35mGET /api/v1/products 200 2025 - 75.087 ms[39m
 2026-03-25 12:54:11:5411 [35mhttp[39m: [35mGET /api/v1/products 200 2025 - 79.858 ms[39m
 2026-03-25 12:58:44:5844 [35mhttp[39m: [35mGET /api/v1/categories/pant 200 1065 - 87.153 ms[39m
+2026-03-25 13:08:53:853 [35mhttp[39m: [35mGET /api/v1/categories/pant 200 1279 - 183.806 ms[39m

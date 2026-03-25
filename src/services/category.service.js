@@ -403,6 +403,7 @@ export const getProductListByCategoryHandleService = async ({
   isFeatured = false,
   categoryhandle = null,
   categoryId = null,
+
 }) => {
   const sanitizedPage = Math.max(1, parseInt(page) || 1);
   const sanitizedLimit = Math.min(50, Math.max(1, parseInt(limit) || 12));
@@ -434,8 +435,10 @@ export const getProductListByCategoryHandleService = async ({
   /* ---------------- SORT ---------------- */
 
   let sortStage = { createdAt: -1 };
-  if (sort === "priceLow") sortStage = { sortPrice: 1 };
-  if (sort === "priceHigh") sortStage = { sortPrice: -1 };
+  if (sort === "price-low") sortStage = { sortPrice: 1 };
+  if (sort === "price-high") sortStage = { sortPrice: -1 };
+  if (sort === "newest") sortStage = { createdAt: -1 };
+  if (sort === "name") sortStage = { name: 1 };
 
   const pipeline = [
 
