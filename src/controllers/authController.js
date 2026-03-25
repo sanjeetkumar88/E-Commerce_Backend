@@ -4,6 +4,7 @@ import {
   refreshAccessToken,
   logoutUser,
   loginUserWithPhone,
+  getMeService,
 } from "../services/auth.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import timeToMs from "../utils/time.util.js";
@@ -130,4 +131,19 @@ export const logout = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+/* -------------------------------------------------------------------------- */
+/*                                  GET ME                                    */
+/* -------------------------------------------------------------------------- */
+
+export const getMe = async (req, res, next) =>{
+try {
+  const user = await getMeService(req.user);
+  
+
+  return res.status(200).json(new ApiResponse(200, user, "User details fetched successfully"));
+} catch (error) {
+  next(error);
+}
 };

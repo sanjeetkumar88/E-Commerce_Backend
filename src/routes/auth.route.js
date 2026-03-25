@@ -4,6 +4,7 @@ import {
   login,
   refreshToken,
   logout,
+  getMe,
 } from "../controllers/authController.js";
 import { verifyJWT } from "../middlewares/authMiddleware.js";
 
@@ -36,5 +37,8 @@ router.route("/refresh-token").post(refreshToken);
  * @access  Private
  */
 router.route("/logout").post(verifyJWT, logout);
+
+
+router.route("/me").get(verifyJWT, getMe);
 
 export default router;
