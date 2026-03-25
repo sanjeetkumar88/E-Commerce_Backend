@@ -369,3 +369,7 @@
 2026-03-22 19:15:37:1537 [35mhttp[39m: [35mGET /api/v1/categories/tree?includeInactive=true 304 - - 70.236 ms[39m
 2026-03-22 19:15:37:1537 [35mhttp[39m: [35mGET /api/v1/products/featured?limit=6 404 438 - 77.385 ms[39m
 2026-03-22 19:15:37:1537 [35mhttp[39m: [35mGET /api/v1/products?limit=8&sort=newest 304 - - 85.124 ms[39m
+2026-03-25 11:31:29:3129 [35mhttp[39m: [35mPOST /api/v1/cart 401 1154 - 149.206 ms[39m
+2026-03-25 11:31:37:3137 [35mhttp[39m: [35mPOST /api/v1/auth/login 200 383 - 473.350 ms[39m
+2026-03-25 11:31:44:3144 [35mhttp[39m: [35mPOST /api/v1/cart 200 114 - 716.655 ms[39m
+2026-03-25 11:47:20:4720 [35mhttp[39m: [35mGET /api/v1/products/ 200 1303 - 370.708 ms[39m

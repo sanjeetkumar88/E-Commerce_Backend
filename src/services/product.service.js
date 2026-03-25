@@ -745,6 +745,183 @@ export const getProductListService = async ({
   };
 };
 
+export const getProductListServiceAdmin = async ({
+  page = 1,
+  limit = 12,
+  search = "",
+  sort = "newest",
+  colors = [],
+  sizes = [],
+  isFeatured = false,
+}) => {
+  const sanitizedPage = Math.max(1, parseInt(page) || 1);
+  const sanitizedLimit = Math.min(50, Math.max(1, parseInt(limit) || 12)); // cap limit for safety
+  const skip = (sanitizedPage - 1) * sanitizedLimit;
+
+  // Base match (INDEXED)
+  const baseMatch = {
+    isDeleted: false,
+    status: "active",
+    ...(isFeatured && { isFeatured: true }),
+  };
+
+  if (search?.trim()) {
+    baseMatch.$text = { $search: search.trim() };
+  }
+
+  // Sorting Logic
+  let sortStage = { createdAt: -1 };
+  if (sort === "priceLow") sortStage = { sortPrice: 1 };
+  if (sort === "priceHigh") sortStage = { sortPrice: -1 };
+
+  const pipeline = [
+    /* 1️ MATCH BASE FILTER */
+    { $match: baseMatch },
+
+    /* 2️ LOOKUP FILTERED VARIANTS  */
+    {
+      $lookup: {
+        from: "productvariants",
+        let: { pid: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$productId", "$$pid"] },
+              stockQuantity: { $gt: 0 },
+              ...(colors.length > 0 && { color: { $in: colors } }),
+              ...(sizes.length > 0 && { size: { $in: sizes } }),
+            },
+          },
+          {
+            $project: {
+              price: 1,
+              salePrice: 1,
+              stockQuantity: 1,
+              isDefault: 1,
+            },
+          },
+        ],
+        as: "variants",
+      },
+    },
+
+    /* 3️ REMOVE PRODUCTS WITHOUT MATCHING VARIANTS */
+    { $match: { "variants.0": { $exists: true } } },
+
+    /* 4️ FIND DEFAULT VARIANT */
+    {
+      $addFields: {
+        defaultVariant: {
+          $ifNull: [
+            {
+              $arrayElemAt: [
+                {
+                  $filter: {
+                    input: "$variants",
+                    as: "v",
+                    cond: { $eq: ["$$v.isDefault", true] },
+                  },
+                },
+                0,
+              ],
+            },
+            { $arrayElemAt: ["$variants", 0] },
+          ],
+        },
+      },
+    },
+
+    /* 5️ COMPUTE SAFE SORT PRICE */
+    {
+      $addFields: {
+        sortPrice: {
+          $ifNull: ["$defaultVariant.salePrice", "$defaultVariant.price"],
+        },
+      },
+    },
+
+    /* 6️ LOOKUP CATEGORY (Lightweight) */
+    {
+      $lookup: {
+        from: "categories",
+        localField: "categoryId",
+        foreignField: "_id",
+        pipeline: [{ $project: { name: 1 } }],
+        as: "category",
+      },
+    },
+
+    /* 7️ LOOKUP PRIMARY IMAGE (ONLY 1) */
+    {
+      $lookup: {
+        from: "productimages",
+        let: { pid: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [{ $eq: ["$productId", "$$pid"] }],
+              },
+            },
+          },
+          { $limit: 1 },
+          { $project: { imageUrl: 1 } },
+        ],
+        as: "primaryImage",
+      },
+    },
+
+    /* 8️ SORT */
+    { $sort: sortStage },
+
+    /* 9️ FACET (DATA + TOTAL COUNT) */
+    {
+      $facet: {
+        data: [
+          { $skip: skip },
+          { $limit: sanitizedLimit },
+          {
+            $project: {
+              _id: 1,
+              title: "$name",
+              handle: 1,
+              categoryName: { $arrayElemAt: ["$category.name", 0] },
+              imageUrl: {
+                $ifNull: [
+                  { $arrayElemAt: ["$primaryImage.imageUrl", 0] },
+                  "https://via.placeholder.com/500?text=No+Image",
+                ],
+              },
+              price: "$defaultVariant.price",
+              salePrice: "$defaultVariant.salePrice",
+              sku: "$defaultVariant.sku",
+              stockQuantity: "$defaultVariant.stockQuantity",
+              createdAt: 1,
+            },
+          },
+        ],
+        totalCount: [{ $count: "count" }],
+      },
+    },
+  ];
+
+  const result = await Product.aggregate(pipeline).allowDiskUse(true);
+
+  const products = result[0].data;
+  const total = result[0].totalCount[0]?.count || 0;
+
+  return {
+    data: {
+      total,
+      page: sanitizedPage,
+      totalPages: Math.ceil(total / sanitizedLimit),
+      collections: products,
+    },
+  };
+};
+
+
+
 /* ---------------- GET PRODUCT DETAIL ----------------- */
 export const getProductDetailService = async (identifier) => {
   const isObjectId = mongoose.Types.ObjectId.isValid(identifier);

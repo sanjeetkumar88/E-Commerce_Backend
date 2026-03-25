@@ -5,10 +5,9 @@ import {
   getProductsShipRocket,
   updateProduct,
   deleteProduct,
-  popularProducts,
-  featuredProducts,
   getProducts,
   getProductDetail,
+  getProductsAdmin,
 } from "../controllers/productController.js";
 
 import { verifyJWT } from "../middlewares/authMiddleware.js";
@@ -34,6 +33,8 @@ router.route("/sync").get(getProductsShipRocket);
 
 router.route("/").get(getProducts);
 
+router.route("/admin").get(verifyJWT, isAdmin, getProductsAdmin);
+
 
 
 // Get product by ID
@@ -49,6 +50,8 @@ router.route("/").post(
   isAdmin,
   createProduct,
 );
+
+
 
 // Upload product images
 router

@@ -151,6 +151,26 @@ export const getProducts = async (req, res, next) => {
   }
 };
 
+export const getProductsAdmin = async (req, res, next) => {
+  try {
+    const { colors, sizes, sort, page, limit, search } = req.query;
+
+    const result = await productService.getProductListServiceAdmin({
+      page,
+      limit,
+      search,
+      sort,
+      // Convert "red,blue" string to ["red", "blue"]
+      colors: colors ? colors.split(",") : [],
+      sizes: sizes ? sizes.split(",") : []
+    });
+
+    res.status(200).json(new ApiResponse(200, result.data, "Products fetched"));
+  } catch (error) {
+    next(error);
+  }
+};
+
 /* ---------------- GET PRODUCT BY ID ---------------- */
 export const getProductDetail = async (req, res, next) => {
   try {
@@ -177,25 +197,4 @@ export const deleteProduct = async (req, res, next) => {
   }
 };
 
-/* ---------------- FEATURED PRODUCTS ---------------- */
-export const featuredProducts = async (req, res, next) => {
-  try {
-    console.log("Fetching featured products with query:", req.query);
-    const {limit, page} = req.query;
-    const products = await productService.getProductListService({ limit, page});
-    res.status(200).json(new ApiResponse(true, "Featured products fetched", products));
-  } catch (err) {
-    next(err);
-  }
-};
-  
-/* ---------------- POPULAR PRODUCTS ---------------- */
-export const popularProducts = async (req, res, next) => {
-  try {
-    const limit = parseInt(req.query.limit) || 10;
-    const products = await productService.popularProductsService(limit);
-    res.status(200).json(new ApiResponse(true, "Popular products fetched", products));
-  } catch (err) {
-    next(err);
-  }
-};
+

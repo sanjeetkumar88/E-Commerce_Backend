@@ -354,4 +354,15 @@ export const mergeGuestCartService = async (
   }
 }; 
 
+export const clearCart = async (userId) => {
+  const cart = await Cart.findOne({ userId });
+
+  if(!cart){
+    return { success: true, message: "Cart is already empty" };
+  }
+
+  await CartItem.deleteMany({ cartId: cart._id });
+  return { success: true, message: "Cart cleared successfully" };
+};
+
 
