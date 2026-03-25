@@ -547,7 +547,6 @@ export const getProductListByCategoryHandleService = async ({
               $expr: {
                 $and: [
                   { $eq: ["$productId", "$$pid"] },
-                  { $eq: ["$isPrimary", true] },
                 ],
               },
             },
