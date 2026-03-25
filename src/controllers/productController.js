@@ -133,13 +133,14 @@ export const getProductsShipRocket = async (req, res, next) => {
 /* ---------------- GET PRODUCTS (GENERAL) ---------------- */
 export const getProducts = async (req, res, next) => {
   try {
-    const { colors, sizes, sort, page, limit, search } = req.query;
+    const { colors, sizes, sort, page, limit, search,isFeatured} = req.query;
 
     const result = await productService.getProductListService({
       page,
       limit,
       search,
       sort,
+      isFeatured: isFeatured === "true",
       // Convert "red,blue" string to ["red", "blue"]
       colors: colors ? colors.split(",") : [],
       sizes: sizes ? sizes.split(",") : []
@@ -153,7 +154,7 @@ export const getProducts = async (req, res, next) => {
 
 export const getProductsAdmin = async (req, res, next) => {
   try {
-    const { colors, sizes, sort, page, limit, search } = req.query;
+    const { colors, sizes, sort, page, limit, search,isFeatured } = req.query;
 
     const result = await productService.getProductListServiceAdmin({
       page,

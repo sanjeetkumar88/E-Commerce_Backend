@@ -379,3 +379,13 @@
 2026-03-25 12:17:15:1715 [35mhttp[39m: [35mGET /api/v1/products/admin 200 1303 - 242.971 ms[39m
 2026-03-25 12:18:55:1855 [35mhttp[39m: [35mGET /api/v1/products/admin 200 3936 - 312.263 ms[39m
 2026-03-25 12:20:25:2025 [35mhttp[39m: [35mGET /api/v1/products/admin 200 3936 - 241.339 ms[39m
+2026-03-25 12:20:44:2044 [35mhttp[39m: [35mGET /api/v1/products/admin 200 1609 - 1366.258 ms[39m
+2026-03-25 12:24:04:244 [35mhttp[39m: [35mGET /api/v1/products/admin 200 4161 - 350.584 ms[39m
+2026-03-25 12:29:52:2952 [35mhttp[39m: [35mGET /api/v1/products/admin 200 4588 - 229.924 ms[39m
+2026-03-25 12:32:40:3240 [35mhttp[39m: [35mGET /api/v1/products?isFeatured=true 200 1931 - 88.940 ms[39m
+2026-03-25 12:49:59:4959 [35mhttp[39m: [35mGET /api/v1/products?isFeatured=true 200 1931 - 185.590 ms[39m
+2026-03-25 12:50:32:5032 [35mhttp[39m: [35mGET /api/v1/products?isFeatured=true 200 2025 - 501.949 ms[39m
+2026-03-25 12:51:56:5156 [35mhttp[39m: [35mGET /api/v1/products?isFeatured=true 200 530 - 103.542 ms[39m
+2026-03-25 12:52:57:5257 [35mhttp[39m: [35mGET /api/v1/products 200 2025 - 75.087 ms[39m
+2026-03-25 12:54:11:5411 [35mhttp[39m: [35mGET /api/v1/products 200 2025 - 79.858 ms[39m
+2026-03-25 12:58:44:5844 [35mhttp[39m: [35mGET /api/v1/categories/pant 200 1065 - 87.153 ms[39m

@@ -33,13 +33,14 @@ router
   .route("/deletecategory/:id")
   .delete(verifyJWT, isAdmin, deleteCategory);
 
+  router.route("/tree").get(getCategoryTree);
 /*----------------------PRODUCTS BY CATEGORY------------------*/
 // /api/products/category?categoryhandle=decor
 // /api/products/category?categoryhandle=decor&page=1&limit=12
 // /api/products/category?categoryhandle=decor&colors=red,blue
 // /api/products/category?categoryhandle=decor&sizes=M,L
 // /api/products/category?categoryhandle=decor&sort=price_asc
-router.route("/products").get(getProductsByCategory);
+router.route("/:categoryhandle").get(getProductsByCategory);
 
 router.route("/sync/:categoryId").get(getProductsByCategoryShipRocket);
 
@@ -47,6 +48,5 @@ router.route("/sync/:categoryId").get(getProductsByCategoryShipRocket);
 router.route("/:id/breadcrumbs").get(getCategoryBreadcrumbs);
 
 /*----------------------CATEGORY TREE------------------*/
-router.route("/tree").get(getCategoryTree);
 
 export default router;

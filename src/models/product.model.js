@@ -149,7 +149,6 @@ productSchema.index({ brand: 1, status: 1 });
 
 productSchema.index({status: 1, isDeleted: 1});
 productSchema.index({createdAt: -1});
-productSchema.index({name: "text"});
 
 
 
