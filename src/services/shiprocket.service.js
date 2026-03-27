@@ -1,7 +1,7 @@
 import axios from "axios";
 import { ApiError } from "../utils/ApiError.js";
 import { generateHmac, getShiprocketToken } from "../utils/shiprocket.js";
-import { OrderItem } from "../models/order.model.js";
+import { OrderItem, Order } from "../models/order.model.js";
 import { Product } from "../models/product.model.js";
 import { ProductVariant } from "../models/productVarient.model.js";
 
@@ -84,14 +84,15 @@ export const createShiprocketCheckoutSession = async (
 export const fetchOrderDetailsFromShiprocket = async (shiprocketId) => {
   try {
     const apiKey = process.env.SHIPROCKET_API_KEY;
-    const apiSecret = process.env.SHIPROCKET_API_SECRET;
     const timestamp = new Date().toISOString();
     const payload = JSON.stringify({ order_id: shiprocketId, timestamp });
 
-    const signature = crypto
-      .createHmac('sha256', apiSecret)
-      .update(payload)
-      .digest('base64');
+    // const signature = crypto
+    //   .createHmac('sha256', apiSecret)
+    //   .update(payload)
+    //   .digest('base64');
+
+    const signature = generateHmac(payload, process.env.SHIPROCKET_API_SECRET,);
 
     const response = await axios.post(
       'https://checkout-api.shiprocket.com/api/v1/custom-platform-order/details',
@@ -104,7 +105,7 @@ export const fetchOrderDetailsFromShiprocket = async (shiprocketId) => {
         },
       },
     );
-
+    console.log("Shiprocket Order Details Response:", response.data);
     return response.data.result;
   } catch (error) {
     console.error("Shiprocket Order Details Error:", error.message);
@@ -115,28 +116,11 @@ export const fetchOrderDetailsFromShiprocket = async (shiprocketId) => {
   }
 };
 
-export const createShiprocketOrder = async (orderId) => {
-  /* ---------------- 1. ATOMIC LOCK ---------------- */
-  const order = await Order.findOneAndUpdate(
-    {
-      _id: orderId,
-      shiprocketOrderId: { $exists: false },
-      shiprocketProcessing: false,
-    },
-    {
-      $set: { shiprocketProcessing: true },
-      $inc: { shiprocketAttempts: 1 },
-    },
-    { new: true }
-  );
-
-  if (!order) {
-    return { skipped: true }; // already processing or done
-  }
+export const createShiprocketOrder = async (order,billing) => {
 
   try {
     /* ---------------- 2. FETCH ITEMS ---------------- */
-    const items = await OrderItem.find({ orderId }).lean();
+    const items = await OrderItem.find({ orderId: order._id }).lean();
 
     if (!items.length) throw new Error("No order items");
 
@@ -169,55 +153,71 @@ export const createShiprocketOrder = async (orderId) => {
       name: item.title,
       sku: item.sku,
       units: item.quantity,
-      selling_price: item.price,
+      selling_price: Number(item.price),
+      discount: Number(item.discountAmount || 0),
+      tax: Number(item.taxAmount || 0),
+      hsn: variantMap.get(item.variantId.toString())?.hsn || '',
     }));
+
+    // name: item.productName,
+    //   sku: item.productSku,
+    //   units: qty,
+    //   selling_price: Number(item.unitPrice),
+    //   discount: 0,
+    //   tax: Number(variant.tax || 0),
+    //   hsn: variant.hsn || '',
 
     /* ---------------- 6. API CALL ---------------- */
     const token = await getShiprocketToken();
+    const payload = {
+    order_id: order.orderNumber || order._id.toString(),
+    order_date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+    pickup_location: process.env.SHIPROCKET_PICKUP_LOCATION || 'Default',
+    billing_customer_name: billing.first_name,
+    billing_last_name: billing.last_name,
+    billing_address: billing.line1 + (billing.line2 ? `, ${billing.line2}` : ''),
+    billing_city: billing.city,
+    billing_pincode: billing.pincode,
+    billing_state: billing.state,
+    billing_country: 'India',
+    billing_email: billing.email,
+    billing_phone: billing.phone,
+    shipping_is_billing: true,
+    order_items: shiprocketItems,
+    payment_method: order.paymentStatus === 'paid' ? 'Prepaid' : 'COD',
+    shipping_charges: Number(order.shippingAmount || 0),
+    giftwrap_charges: 0,
+    transaction_charges: 0,
+    total_discount: Number(order.discountAmount || 0),
+    sub_total: Number(order.subtotal || 1000),
+    length: items.dimension?.length || 10,
+    breadth: items.dimension?.breadth || 10,
+    height: items.dimension?.height || 10,
+    weight: items.weight/1000,
+    total_tax: Number(order.taxAmount || 0),
+  };
+
+  console.log("Shiprocket Create Order Payload:", payload);
 
     const response = await axios.post(
       "https://apiv2.shiprocket.in/v1/external/orders/create/adhoc",
+      payload,
       {
-        order_id: order.orderNumber,
-        order_date: new Date().toISOString().slice(0, 19).replace("T", " "),
-        pickup_location: process.env.SHIPROCKET_PICKUP_LOCATION,
-
-        billing_customer_name: order.billingAddress.firstName,
-        billing_address: order.billingAddress.address1,
-        billing_city: order.billingAddress.city,
-        billing_pincode: order.billingAddress.pincode,
-        billing_state: order.billingAddress.state,
-        billing_phone: order.billingAddress.mobile,
-
-        shipping_is_billing: true,
-
-        order_items: shiprocketItems,
-
-        payment_method:
-          order.paymentStatus === "paid" ? "Prepaid" : "COD",
-
-        sub_total: order.subtotal,
-        length: 10,
-        breadth: 10,
-        height: 10,
-        weight: 0.5,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
       },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        timeout: 10000,
-      }
+    },
     );
 
     const data = response.data;
 
-    if (!data?.order_id) {
-      throw new Error("Invalid Shiprocket response");
-    }
+    console.log("Shiprocket Create Order Response:", response.data);
+
+    
 
     /* ---------------- 7. SUCCESS ---------------- */
-    await Order.findByIdAndUpdate(orderId, {
+    await Order.findByIdAndUpdate(order._id, {
       shiprocketOrderId: data.order_id,
       shiprocketShipmentId: data.shipment_id,
       shiprocketProcessing: false,
@@ -230,7 +230,7 @@ export const createShiprocketOrder = async (orderId) => {
     console.error("Shiprocket Error:", error.message);
 
     /* ---------------- 8. FAILURE HANDLING ---------------- */
-    await Order.findByIdAndUpdate(orderId, {
+    await Order.findByIdAndUpdate(order._id, {
       shiprocketProcessing: false,
       shiprocketError: error.message,
     });

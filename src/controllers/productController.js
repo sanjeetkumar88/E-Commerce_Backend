@@ -19,19 +19,38 @@ export const createProduct = async (req, res, next) => {
       careGuide,
       categoryId,
       brand,
-      tags,
       isFeatured,
       isActive,
       status,
-      variants,
     } = req.body;
 
     if (!name || !categoryId) {
       throw new ApiError(400, "Product name and category are required");
     }
-    let handle = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
-    const variantList = Array.isArray(variants) ? variants : [];
+    // Parse JSON strings from FormData
+    let variants = [];
+    try {
+      variants = typeof req.body.variants === "string"
+        ? JSON.parse(req.body.variants)
+        : Array.isArray(req.body.variants) ? req.body.variants : [];
+    } catch (_) { variants = []; }
+
+    let tags = [];
+    try {
+      if (typeof req.body.tags === "string" && req.body.tags.trim()) {
+        // Could be JSON array or comma-separated
+        if (req.body.tags.startsWith("[")) {
+          tags = JSON.parse(req.body.tags);
+        } else {
+          tags = req.body.tags.split(",").map(t => t.trim()).filter(Boolean);
+        }
+      }
+    } catch (_) {
+      tags = req.body.tags ? req.body.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
+    }
+
+    const handle = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
     const result = await productService.createProductService({
       productData: {
@@ -45,16 +64,37 @@ export const createProduct = async (req, res, next) => {
         stylingInspiration,
         occasionsAndUsage,
         careGuide,
-        categoryId, 
+        categoryId,
         brand,
         tags,
         handle,
-        isFeatured: isFeatured ?? false,
-        isActive: isActive ?? true,
-        status: status ?? "draft",
+        isFeatured: isFeatured === true || isFeatured === "true",
+        isActive: isActive === undefined || isActive === true || isActive === "true",
+        status: status || "draft",
       },
-      variants: variantList,
+      variants,
     });
+
+    // Upload images if files were sent along with the create request
+    if (req.files && req.files.length > 0) {
+      // Remap variantImages[index] → variantImages[actualVariantId]
+      const createdVariantIds = result.variants.map(v => String(v._id));
+      const remappedFiles = req.files.map(file => {
+        const indexMatch = file.fieldname.match(/^variantImages\[(\d+)\]$/);
+        if (indexMatch) {
+          const idx = parseInt(indexMatch[1], 10);
+          if (createdVariantIds[idx]) {
+            return { ...file, fieldname: `variantImages[${createdVariantIds[idx]}]` };
+          }
+        }
+        return file;
+      });
+
+      await productService.uploadProductImagesService({
+        productId: result.product._id,
+        files: remappedFiles,
+      });
+    }
 
     return res
       .status(201)
@@ -92,23 +132,79 @@ export const updateProduct = async (req, res, next) => {
       name,
       description,
       shortDescription,
+      craftmenshipDetails,
+      luxeMaterials,
+      productSpecifications,
+      capacityAndDimensions,
+      stylingInspiration,
+      occasionsAndUsage,
+      careGuide,
       categoryId,
       brand,
-      tags,
       isFeatured,
       isActive,
-      variants,
-      removeVariantIds,
-      removeImageIds
+      status,
     } = req.body;
+
+    // Parse JSON strings from FormData
+    let variants = [];
+    try {
+      variants = typeof req.body.variants === "string"
+        ? JSON.parse(req.body.variants)
+        : Array.isArray(req.body.variants) ? req.body.variants : [];
+    } catch (_) { variants = []; }
+
+    let tags = [];
+    try {
+      if (typeof req.body.tags === "string" && req.body.tags.trim()) {
+        if (req.body.tags.startsWith("[")) {
+          tags = JSON.parse(req.body.tags);
+        } else {
+          tags = req.body.tags.split(",").map(t => t.trim()).filter(Boolean);
+        }
+      }
+    } catch (_) {
+      tags = req.body.tags ? req.body.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
+    }
+
+    let removeVariantIds = [];
+    try {
+      removeVariantIds = typeof req.body.removeVariantIds === "string"
+        ? JSON.parse(req.body.removeVariantIds)
+        : Array.isArray(req.body.removeVariantIds) ? req.body.removeVariantIds : [];
+    } catch (_) { removeVariantIds = []; }
+
+    let removeImageIds = [];
+    try {
+      removeImageIds = typeof req.body.removeImageIds === "string"
+        ? JSON.parse(req.body.removeImageIds)
+        : Array.isArray(req.body.removeImageIds) ? req.body.removeImageIds : [];
+    } catch (_) { removeImageIds = []; }
 
     const result = await productService.updateProductService({
       productId,
-      productData: { name, description, shortDescription, categoryId, brand, tags, isFeatured, isActive },
+      productData: {
+        name,
+        description,
+        shortDescription,
+        craftmenshipDetails,
+        luxeMaterials,
+        productSpecifications,
+        capacityAndDimensions,
+        stylingInspiration,
+        occasionsAndUsage,
+        careGuide,
+        categoryId,
+        brand,
+        tags,
+        isFeatured: isFeatured === true || isFeatured === "true",
+        isActive: isActive === undefined || isActive === true || isActive === "true",
+        status: status || undefined,
+      },
       variants,
       removeVariantIds,
       removeImageIds,
-      files: req.files
+      files: req.files || [],
     });
 
     return res.status(200).json(new ApiResponse(true, "Product updated successfully", result));
@@ -181,6 +277,20 @@ export const getProductDetail = async (req, res, next) => {
     return res
       .status(200)
       .json(new ApiResponse(200, product, "Product details fetched successfully"));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* ---------------- GET PRODUCT BY ID (ADMIN) ---------------- */
+export const getProductDetailAdmin = async (req, res, next) => {
+  try {
+    const { identifier } = req.params;
+    const product = await productService.getProductDetailAdminService(identifier);
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, product, "Admin Product details fetched successfully"));
   } catch (error) {
     next(error);
   }

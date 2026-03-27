@@ -174,6 +174,7 @@ export const shiprocketCreateOrder = async (req, res, next) => {
         paymentStatus: orderDetails.payment_status,
         shippingAmount: orderDetails.shipping_amount,
         totalAmount: orderDetails.total_amount_payable,
+        paymentType: orderDetails.payment_type,
         rawShiprocketResponse: orderDetails,
       },
       { new: true }
@@ -182,12 +183,13 @@ export const shiprocketCreateOrder = async (req, res, next) => {
     if (!order) {
       return res.status(404).json(new ApiResponse(404, null, "Order not found"));
     }
-
+    var shiprocketOrder;
     if (!order.shiprocketOrderId) {
-      const shiprocketOrder = await createShiprocketOrder(order, orderDetails.billing_address);
+      shiprocketOrder = await createShiprocketOrder(order, orderDetails.billing_address);
     }
+    console.log("shiprocketOrder:", shiprocketOrder);
     if (shiprocketOrder) {
-      await Order.findByIdAndUpdate(orderId._id, {
+      await Order.findByIdAndUpdate(orderId, {
         shiprocketOrderId: shiprocketOrder.order._id,
         shiprocketShipmentId: shiprocketOrder.shipment._id ?? null,
         awbCode: shiprocketOrder.shipment.awb_code ?? null,

@@ -18,6 +18,10 @@ const orderSchema = new mongoose.Schema(
       sparse: true,
       index: true,
     },
+    paymentType: {
+      type: String,
+      trim: true,
+    },
 
     shiprocketCheckoutId: {
       type: String,

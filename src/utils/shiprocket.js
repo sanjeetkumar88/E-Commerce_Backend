@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import { ApiError } from "./ApiError.js";
+import axios from "axios";
 
 export const generateHmac = (payload, secret) => {
   return crypto
@@ -17,13 +19,14 @@ export const getShiprocketToken = async () => {
 
   try {
     const response = await axios.post(
-      `${BASE_URL}/auth/login`,
+      `${process.env.SHIPROCKET_BASEURL}/auth/login`,
       {
-        email: SHIPROCKET_EMAIL,
-        password: SHIPROCKET_PASSWORD,
+        email: process.env.SHIPROCKET_EMAIL,
+        password: process.env.SHIPROCKET_PASSWORD,
       },
       { timeout: 8000 }
     );
+
 
     shiprocketToken = response.data.token;
 

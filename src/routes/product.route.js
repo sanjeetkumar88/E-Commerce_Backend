@@ -7,6 +7,7 @@ import {
   deleteProduct,
   getProducts,
   getProductDetail,
+  getProductDetailAdmin,
   getProductsAdmin,
 } from "../controllers/productController.js";
 
@@ -44,10 +45,14 @@ router.route("/:identifier").get(getProductDetail);
 /*                              ADMIN ROUTES                                   */
 /* -------------------------------------------------------------------------- */
 
-// Create product
+// Get product detail for admin (includes inactive variants)
+router.route("/admin/:identifier").get(verifyJWT, isAdmin, getProductDetailAdmin);
+
+// Create product (accepts FormData with images)
 router.route("/").post(
   verifyJWT,
   isAdmin,
+  upload.any(),
   createProduct,
 );
 

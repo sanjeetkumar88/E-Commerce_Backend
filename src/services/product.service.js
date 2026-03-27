@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { v2 as cloudinary } from "cloudinary";
 import { Product } from "../models/product.model.js";
 import { ProductVariant } from "../models/productVarient.model.js";
 import { ProductImage } from "../models/productImage.model.js";
@@ -685,7 +686,7 @@ export const getProductListService = async ({
           {
             $match: {
               $expr: {
-                $and: [{ $eq: ["$productId", "$$pid"] }],
+                $and: [{ $eq: ["$productId", "$$pid"] }, { $eq: ["$variantId", null] }],
               },
             },
           },
@@ -857,7 +858,7 @@ export const getProductListServiceAdmin = async ({
           {
             $match: {
               $expr: {
-                $and: [{ $eq: ["$productId", "$$pid"] }],
+                $and: [{ $eq: ["$productId", "$$pid"] }, { $eq: ["$variantId", null] }],
               },
             },
           },
@@ -880,13 +881,16 @@ export const getProductListServiceAdmin = async ({
           {
             $project: {
               _id: 1,
+              name: 1,
               title: "$name",
               handle: 1,
+              status: 1,
+              isActive: 1,
               categoryName: { $arrayElemAt: ["$category.name", 0] },
               imageUrl: {
                 $ifNull: [
                   { $arrayElemAt: ["$primaryImage.imageUrl", 0] },
-                  "https://via.placeholder.com/500?text=No+Image",
+                  null,
                 ],
               },
               price: "$defaultVariant.price",
@@ -962,6 +966,22 @@ export const getProductDetailService = async (identifier) => {
             },
           },
           {
+            $lookup: {
+              from: "productimages",
+              let: { vid: "$_id" },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: { $eq: ["$variantId", "$$vid"] },
+                  },
+                },
+                { $sort: { isPrimary: -1, createdAt: 1 } },
+                { $project: { imageUrl: 1 } },
+              ],
+              as: "images",
+            },
+          },
+          {
             $project: {
               price: 1,
               salePrice: 1,
@@ -969,7 +989,18 @@ export const getProductDetailService = async (identifier) => {
               size: 1,
               sku: 1,
               stockQuantity: 1,
+              weight: 1,
+              dimensions: 1,
+              hsnCode: 1,
+              taxRate: 1,
               isDefault: 1,
+              images: {
+                $map: {
+                  input: "$images",
+                  as: "img",
+                  in: "$$img.imageUrl"
+                }
+              }
             },
           },
         ],
@@ -977,7 +1008,7 @@ export const getProductDetailService = async (identifier) => {
       },
     },
 
-    /* ---------------- IMAGES ---------------- */
+    /* ---------------- IMAGES (Product-level) ---------------- */
     {
       $lookup: {
         from: "productimages",
@@ -985,14 +1016,18 @@ export const getProductDetailService = async (identifier) => {
         pipeline: [
           {
             $match: {
-              $expr: { $eq: ["$productId", "$$pid"] },
-              isPrimary: true,
+              $expr: {
+                $and: [
+                  { $eq: ["$productId", "$$pid"] },
+                  { $eq: ["$variantId", null] }
+                ]
+              },
             },
           },
-          { $limit: 1 },
+          { $sort: { isPrimary: -1, createdAt: 1 } },
           { $project: { imageUrl: 1 } },
         ],
-        as: "primaryImage",
+        as: "productImages",
       },
     },
 
@@ -1119,9 +1154,182 @@ export const getProductDetailService = async (identifier) => {
         handle: 1,
         tags: 1,
         category: { $arrayElemAt: ["$category", 0] },
-        galleryImage: { $arrayElemAt: ["$primaryImage.imageUrl", 0] },
+        images: {
+          $map: {
+            input: "$productImages",
+            as: "img",
+            in: "$$img.imageUrl"
+          }
+        },
         variants: 1,
         relatedProducts: 1,
+      },
+    },
+  ]);
+
+  if (!result.length) {
+    throw new ApiError(404, "Product not found");
+  }
+
+  return result[0];
+};
+
+/* ---------------- GET PRODUCT DETAIL (ADMIN) ----------------- */
+export const getProductDetailAdminService = async (identifier) => {
+  const isObjectId = mongoose.Types.ObjectId.isValid(identifier);
+
+  const matchQuery = isObjectId
+    ? { _id: new mongoose.Types.ObjectId(identifier) }
+    : { handle: identifier };
+
+  const result = await Product.aggregate([
+    {
+      $match: matchQuery,
+    },
+
+    /* ---------------- CATEGORY ---------------- */
+    {
+      $lookup: {
+        from: "categories",
+        localField: "categoryId",
+        foreignField: "_id",
+        pipeline: [{ $project: { name: 1, handle: 1 } }],
+        as: "category",
+      },
+    },
+
+    /* ---------------- ALL VARIANTS ---------------- */
+    {
+      $lookup: {
+        from: "productvariants",
+        let: { pid: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$productId", "$$pid"] },
+              // Removed isActive: true filter
+            },
+          },
+          {
+            $lookup: {
+              from: "productimages",
+              let: { vid: "$_id" },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: { $eq: ["$variantId", "$$vid"] },
+                  },
+                },
+                { $sort: { isPrimary: -1, createdAt: 1 } },
+                { $project: { imageUrl: 1 } },
+              ],
+              as: "images",
+            },
+          },
+          {
+            $project: {
+              price: 1,
+              salePrice: 1,
+              color: 1,
+              size: 1,
+              sku: 1,
+              stockQuantity: 1,
+              weight: 1,
+              dimensions: 1,
+              hsnCode: 1,
+              taxRate: 1,
+              isDefault: 1,
+              isActive: 1,
+              images: {
+                $map: {
+                  input: "$images",
+                  as: "img",
+                  in: "$$img.imageUrl"
+                }
+              }
+            },
+          },
+        ],
+        as: "variants",
+      },
+    },
+
+    /* ---------------- IMAGES (Product-level) ---------------- */
+    {
+      $lookup: {
+        from: "productimages",
+        let: { pid: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$productId", "$$pid"] },
+                  { $eq: ["$variantId", null] }
+                ]
+              },
+            },
+          },
+          { $sort: { isPrimary: -1, createdAt: 1 } },
+          { $project: { imageUrl: 1 } },
+        ],
+        as: "productImages",
+      },
+    },
+
+    /* ---------------- DEFAULT VARIANT ---------------- */
+    {
+      $addFields: {
+        defaultVariant: {
+          $ifNull: [
+            {
+              $arrayElemAt: [
+                {
+                  $filter: {
+                    input: "$variants",
+                    as: "v",
+                    cond: { $eq: ["$$v.isDefault", true] },
+                  },
+                },
+                0,
+              ],
+            },
+            { $arrayElemAt: ["$variants", 0] },
+          ],
+        },
+      },
+    },
+
+    /* ---------------- FINAL SHAPE ---------------- */
+    {
+      $project: {
+        _id: 1,
+        name: 1,
+        description: 1,
+        shortDescription: 1,
+        craftmenshipDetails: 1,
+        luxeMaterials: 1,
+        productSpecifications: 1,
+        capacityAndDimensions: 1,
+        stylingInspiration: 1,
+        occasionsAndUsage: 1,
+        careGuide: 1,
+        brand: 1,
+        handle: 1,
+        tags: 1,
+        status: 1,
+        isActive: 1,
+        isDeleted: 1,
+        isFeatured: 1,
+        category: { $arrayElemAt: ["$category", 0] },
+        images: {
+          $map: {
+            input: "$productImages",
+            as: "img",
+            in: "$$img.imageUrl"
+          }
+        },
+        variants: 1,
       },
     },
   ]);
