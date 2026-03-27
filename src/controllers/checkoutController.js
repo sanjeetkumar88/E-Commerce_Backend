@@ -4,31 +4,32 @@ import { ProductVariant } from "../models/productVarient.model.js";
 import { ProductImage } from "../models/productImage.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import {createShiprocketCheckoutSession} from "../services/shiprocket.service.js";
+import { createShiprocketCheckoutSession } from "../services/shiprocket.service.js";
 import { getCart } from "../services/cart.service.js";
+import { fetchOrderDetailsFromShiprocket, createShiprocketOrder } from "../services/shiprocket.service.js";
 
 export const createCheckoutSession = async (req, res, next) => {
   const session = await mongoose.startSession();
-  session.startTransaction();
 
   try {
+    session.startTransaction();
+
     const user = req.user;
+
     const { items } = await getCart(user._id, "IN");
 
-    
-
     if (!items || !Array.isArray(items) || !items.length) {
-      throw new ApiError(400, "Cart items are required");
+      throw new ApiError(400, "Cart is empty");
     }
 
+    /* ---------------- CREATE ORDER ---------------- */
     const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     let subtotal = 0;
     let totalTax = 0;
     let totalDiscount = 0;
 
-    // 1️ Create empty order first
-    const order = await Order.create(
+    const [order] = await Order.create(
       [
         {
           userId: user._id,
@@ -41,27 +42,19 @@ export const createCheckoutSession = async (req, res, next) => {
           totalAmount: 0,
         },
       ],
-      { session },
+      { session }
     );
-
-    const newOrder = order[0];
 
     const shiprocketItems = [];
 
-    
-
-    // 2️ Loop cart items
+    /* ---------------- PROCESS CART ---------------- */
     for (const item of items) {
-      if (!item.variantId || !item.quantity) {
-        throw new ApiError(400, "Invalid cart item");
-      }
-
       const variant = await ProductVariant.findById(item.variantId)
         .populate("productId")
         .session(session);
 
       if (!variant || !variant.isActive) {
-        throw new ApiError(404, "Product variant not found");
+        throw new ApiError(404, "Variant not found");
       }
 
       if (!variant.shiprocketVariantId) {
@@ -71,24 +64,9 @@ export const createCheckoutSession = async (req, res, next) => {
       if (variant.stockQuantity < item.quantity) {
         throw new ApiError(
           400,
-          `Only ${variant.stockQuantity} items left in stock`,
+          `Only ${variant.stockQuantity} left for ${variant.sku}`
         );
       }
-
-      let variantImageDoc = await ProductImage.findOne({
-        productId: variant.productId._id,
-        variantId: variant._id,
-      }).session(session);
-
-      // Fallback to product main image
-      if (!variantImageDoc) {
-        variantImageDoc = await ProductImage.findOne({
-          productId: variant.productId._id,
-          variantId: null,
-        }).session(session);
-      }
-
-      const productImage = variantImageDoc?.imageUrl || null;
 
       const price = variant.salePrice || variant.price;
       const itemSubtotal = price * item.quantity;
@@ -105,11 +83,11 @@ export const createCheckoutSession = async (req, res, next) => {
       totalTax += taxAmount;
       totalDiscount += discount;
 
-      // 3️ Create OrderItem
+      /* ---------------- ORDER ITEM ---------------- */
       await OrderItem.create(
         [
           {
-            orderId: newOrder._id,
+            orderId: order._id,
             productId: variant.productId._id,
             variantId: variant._id,
             shiprocketVariantId: variant.shiprocketVariantId,
@@ -119,14 +97,13 @@ export const createCheckoutSession = async (req, res, next) => {
             quantity: item.quantity,
             price,
             total: itemSubtotal,
-            productImage,
             taxRate,
             taxAmount,
             discountAmount: discount,
             weight: variant.weight || 0,
           },
         ],
-        { session },
+        { session }
       );
 
       shiprocketItems.push({
@@ -135,38 +112,40 @@ export const createCheckoutSession = async (req, res, next) => {
       });
     }
 
-    // 4️ Update order totals
-    newOrder.subtotal = subtotal;
-    newOrder.taxAmount = totalTax;
-    newOrder.discountAmount = totalDiscount;
-    newOrder.totalAmount = subtotal + totalTax;
-    await newOrder.save({ session });
+    /* ---------------- UPDATE TOTALS ---------------- */
+    order.subtotal = subtotal;
+    order.taxAmount = totalTax;
+    order.discountAmount = totalDiscount;
+    order.totalAmount = subtotal + totalTax;
 
-    // 5️ Call Shiprocket
-    const redirectUrl = `/checkout-success?orderId=${newOrder._id}`;
-    let orderReferenceId = newOrder._id.toString();
+    console.log("Order Totals:", { subtotal, totalTax, totalDiscount, totalAmount: order.totalAmount });
+
+    await order.save({ session });
+
+    /* ---------------- CREATE CHECKOUT ---------------- */
+    const redirectUrl = `${process.env.FRONTEND_URL}/checkout-success?orderId=${order._id}`;
 
     const checkout = await createShiprocketCheckoutSession(
       shiprocketItems,
       redirectUrl,
       user,
-      orderReferenceId
+      order._id.toString()
     );
 
-    console.log("Shiprocket checkout response:", checkout.response.result.data.order_id);
-    newOrder.shiprocketCheckoutOrderId = checkout.response.result.data.order_id;
-    newOrder.shiprocketCheckoutId = checkout.checkoutId;
-    await newOrder.save({ session });
+    /* ---------------- SAVE SHIPROCKET DATA ---------------- */
+    order.shiprocketCheckoutOrderId =
+      checkout.response?.result?.data?.order_id;
+
+    order.shiprocketCheckoutId =
+      checkout.response?.result?.token;
+
+    await order.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
     return res.status(200).json(
-      new ApiResponse(
-        200,
-        checkout.response,
-        "Checkout session created successfully",
-      ),
+      new ApiResponse(200, checkout.response, "Checkout created successfully")
     );
   } catch (error) {
     await session.abortTransaction();
@@ -174,3 +153,54 @@ export const createCheckoutSession = async (req, res, next) => {
     next(error);
   }
 };
+
+export const shiprocketCreateOrder = async (req, res, next) => {
+  const { orderId, shiprocketId } = req.body;
+  if (!orderId || !shiprocketId) {
+    return res.status(400).json(new ApiResponse(400, null, "orderId and shiprocketId are required"));
+  }
+
+  try {
+    const orderDetails = await fetchOrderDetailsFromShiprocket(shiprocketId);
+
+    if (!orderDetails) {
+      return res.status(404).json(new ApiResponse(404, null, "Order details not found in Shiprocket"));
+    }
+
+    const order = await Order.findByIdAndUpdate(
+      orderId,
+      {
+        status: orderDetails.status,
+        paymentStatus: orderDetails.payment_status,
+        shippingAmount: orderDetails.shipping_amount,
+        totalAmount: orderDetails.total_amount_payable,
+        rawShiprocketResponse: orderDetails,
+      },
+      { new: true }
+    );
+
+    if (!order) {
+      return res.status(404).json(new ApiResponse(404, null, "Order not found"));
+    }
+
+    if (!order.shiprocketOrderId) {
+      const shiprocketOrder = await createShiprocketOrder(order, orderDetails.billing_address);
+    }
+    if (shiprocketOrder) {
+      await Order.findByIdAndUpdate(orderId._id, {
+        shiprocketOrderId: shiprocketOrder.order._id,
+        shiprocketShipmentId: shiprocketOrder.shipment._id ?? null,
+        awbCode: shiprocketOrder.shipment.awb_code ?? null,
+        courierName: shiprocketOrder.courier_name ?? null,
+      })
+    }
+
+    return res.status(200).json(new ApiResponse(200, order, "Order updated with Shiprocket details"));
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+
+

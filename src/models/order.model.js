@@ -120,6 +120,9 @@ const orderSchema = new mongoose.Schema(
     lastWebhookAt: {
       type: Date,
     },
+    fulfillmentError: {
+      type: String,
+    },
   },
   { timestamps: true },
 );
