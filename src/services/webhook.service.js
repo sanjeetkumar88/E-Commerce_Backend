@@ -1,6 +1,6 @@
 import axios from "axios";
 import crypto from "crypto";
-import { ApiError } from "../utils/apiError.js";
+import { ApiError } from "../utils/ApiError.js";
 import {Order} from "../models/order.model.js";
 import { generateHmac } from "../utils/shiprocket.js";
 
