@@ -144,7 +144,7 @@ export const refreshAccessToken = async (refreshToken) => {
     throw new ApiError(401, "Refresh token mismatch");
   }
 
-  // 🔁 ROTATE refresh token
+  //  ROTATE refresh token
   const newAccessToken = user.generateAccessToken();
   const newRefreshToken = user.generateRefreshToken();
 

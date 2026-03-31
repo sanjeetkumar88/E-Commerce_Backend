@@ -16,10 +16,17 @@ import timeToMs from "../utils/time.util.js";
 const accessTokenMaxAge = timeToMs(process.env.ACCESS_TOKEN_EXPIRY);
 const refreshTokenMaxAge = timeToMs(process.env.REFRESH_TOKEN_EXPIRY); 
 
-const baseCookieOptions = {
+// const baseCookieOptions = {
+//   httpOnly: true,
+//   secure: process.env.NODE_ENV === "production",
+//   sameSite: "lax",
+// };
+
+export const baseCookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax",
+  secure: true,        
+  sameSite: "none",    
+  path: "/",
 };
 
 /* -------------------------------------------------------------------------- */
