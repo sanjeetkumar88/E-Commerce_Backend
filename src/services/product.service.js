@@ -596,8 +596,8 @@ export const getProductListService = async ({
 
   // Sorting Logic
   let sortStage = { createdAt: -1 };
-  if (sort === "priceLow") sortStage = { sortPrice: 1 };
-  if (sort === "priceHigh") sortStage = { sortPrice: -1 };
+  if (sort === "price-low") sortStage = { sortPrice: 1 };
+  if (sort === "price-high") sortStage = { sortPrice: -1 };
 
   const pipeline = [
     /* 1️ MATCH BASE FILTER */
