@@ -30,7 +30,7 @@ const categorySchema = new mongoose.Schema(
       ref: 'Category',
       default: null,
       validate: {
-        validator: function(v) {
+        validator: function (v) {
           // Prevent self-referencing
           return !v || v.toString() !== this._id.toString();
         },
@@ -42,6 +42,8 @@ const categorySchema = new mongoose.Schema(
     sortOrder: { type: Number, default: 0 },
     metaTitle: { type: String, maxlength: 255 },
     metaDescription: { type: String, maxlength: 500 },
+    level: { type: Number, default: 0 },
+    path: { type: String, default: "" }
   },
   {
     timestamps: true,
@@ -70,6 +72,25 @@ categorySchema.pre('validate', function () {
   }
 });
 
+categorySchema.pre('save', async function () {
+  if (this.isModified('parentId') || this.isModified('handle') || this.isNew) {
+    if (!this.parentId) {
+      this.level = 0;
+      this.path = this.handle;
+    } else {
+      const parent = await this.constructor.findById(this.parentId);
+      if (parent) {
+        this.level = parent.level + 1;
+        this.path = `${parent.path}/${this.handle}`;
+      } else {
+        this.level = 0;
+        this.path = this.handle;
+      }
+    }
+  }
+});
+
 categorySchema.index({ parentId: 1, isActive: 1, sortOrder: 1 });
+categorySchema.index({ path: 1 });
 
 export const Category = mongoose.model('Category', categorySchema);
