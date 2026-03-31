@@ -3,7 +3,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { Product } from "../models/product.model.js";
 import { ProductVariant } from "../models/productVarient.model.js";
 import { ProductImage } from "../models/productImage.model.js";
-import { ApiError } from "../utils/apiError.js";
+import { ApiError } from "../utils/ApiError.js";
 import { uploadBufferToCloudinary } from "../utils/cloudinary.js";
 
 /* ---------------- CREATE PRODUCT + VARIANTS ---------------- */
