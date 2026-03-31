@@ -1,13 +1,11 @@
 import mongoose from "mongoose";
-import { ApiError } from "../utils/apiError.js";
-import { ApiResponse } from "../utils/ApiResponse.js";
 
 
 // controllers/webhook.controller.js
 
 import { processShiprocketWebhook, handleShiprocketWebhookService  } from "../services/webhook.service.js";
 
-export const shiprocketWebhookController = async (req, res) => {
+export const shiprocketWebhookController = async (req, res, next) => {
   try {
     console.log(" Webhook received");
 
@@ -29,8 +27,7 @@ export const shiprocketWebhookController = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Controller Error:", error);
-
+    next(error);
     return res.status(500).json({
       success: false,
       message: "Webhook failed",
@@ -38,14 +35,14 @@ export const shiprocketWebhookController = async (req, res) => {
   }
 };
 
-export const shiprocketOrderUpdateWebhook = async (req, res) => {
+export const shiprocketOrderUpdateWebhook = async (req, res, next) => {
   try {
 
     // const apiKey = req.headers["x-api-key"];
     // if (apiKey && apiKey !== "mysecret123") {
     //   return res.status(401).json({ message: "Unauthorized" });
     // }
-    
+
     const data = req.body;
 
     console.log("📩 Shiprocket Webhook Received:", data);
@@ -54,9 +51,7 @@ export const shiprocketOrderUpdateWebhook = async (req, res) => {
 
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error("Webhook Controller Error:", error.message);
-
-    
+    next(error);
     res.status(200).json({ success: false });
   }
 };
