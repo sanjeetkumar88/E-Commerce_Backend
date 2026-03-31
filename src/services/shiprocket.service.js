@@ -1,5 +1,5 @@
 import axios from "axios";
-import { ApiError } from "../utils/ApiError.js";
+import { ApiError } from "../utils/apiError.js";
 import { generateHmac, getShiprocketToken } from "../utils/shiprocket.js";
 import { OrderItem, Order } from "../models/order.model.js";
 import { Product } from "../models/product.model.js";

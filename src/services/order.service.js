@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { Order, OrderItem } from "../models/order.model.js";
-import { ApiError } from "../utils/ApiError.js";
+import { ApiError } from "../utils/apiError.js";
 
 /**
  * Get paginated orders for a specific user
