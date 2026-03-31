@@ -12,7 +12,7 @@ app.use(globalLimiter);
 app.use(morganMiddleware);
 
 app.use(cors({
-  origin: ["https://oinori.in/","http://localhost:8080"],
+  origin: ["https://oinori.in","http://localhost:8080"],
   credentials: true,
 }));
 
