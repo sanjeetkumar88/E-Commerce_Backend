@@ -7,6 +7,7 @@ import logger from './src/utils/logger.js';
 import { globalLimiter, apiReadLimiter, authLimiter, checkoutLimiter } from "./src/middlewares/rateLimiter.js";
 
 const app = express();
+app.set("trust proxy", 1);
 
 app.use(globalLimiter);
 app.use(morganMiddleware);
