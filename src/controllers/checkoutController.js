@@ -83,6 +83,16 @@ export const createCheckoutSession = async (req, res, next) => {
       totalTax += taxAmount;
       totalDiscount += discount;
 
+      /* ---------------- IMAGE FETCHING ---------------- */
+      const itemImage = await ProductImage.findOne({
+        $or: [
+          { variantId: variant._id, isPrimary: true },
+          { variantId: variant._id },
+          { productId: variant.productId._id, isPrimary: true, variantId: null },
+          { productId: variant.productId._id, variantId: null },
+        ],
+      }).session(session);
+
       /* ---------------- ORDER ITEM ---------------- */
       await OrderItem.create(
         [
@@ -101,6 +111,7 @@ export const createCheckoutSession = async (req, res, next) => {
             taxAmount,
             discountAmount: discount,
             weight: variant.weight || 0,
+            productImage: itemImage?.imageUrl || "",
           },
         ],
         { session }
@@ -185,16 +196,31 @@ export const shiprocketCreateOrder = async (req, res, next) => {
     }
     var shiprocketOrder;
     if (!order.shiprocketOrderId) {
-      shiprocketOrder = await createShiprocketOrder(order, orderDetails.billing_address);
+      // Normalize billing address from Shiprocket response
+      const billing = {
+        first_name: orderDetails.billing_address.firstname || orderDetails.billing_address.first_name || order.shippingAddress.firstName,
+        last_name: orderDetails.billing_address.lastname || orderDetails.billing_address.last_name || order.shippingAddress.lastName,
+        line1: orderDetails.billing_address.address || orderDetails.billing_address.line1 || order.shippingAddress.address1,
+        line2: orderDetails.billing_address.address_2 || orderDetails.billing_address.line2 || order.shippingAddress.address2 || "",
+        city: orderDetails.billing_address.city || order.shippingAddress.city,
+        pincode: orderDetails.billing_address.pincode || orderDetails.billing_address.zipcode || order.shippingAddress.pincode,
+        state: orderDetails.billing_address.state || order.shippingAddress.state,
+        email: orderDetails.billing_address.email || order.shippingAddress.email,
+        phone: orderDetails.billing_address.phone || order.shippingAddress.mobile,
+      };
+
+      shiprocketOrder = await createShiprocketOrder(order, billing);
     }
-    console.log("shiprocketOrder:", shiprocketOrder);
+
+    console.log("Shiprocket Order Created:", shiprocketOrder);
+
     if (shiprocketOrder) {
       await Order.findByIdAndUpdate(orderId, {
-        shiprocketOrderId: shiprocketOrder.order._id,
-        shiprocketShipmentId: shiprocketOrder.shipment._id ?? null,
-        awbCode: shiprocketOrder.shipment.awb_code ?? null,
-        courierName: shiprocketOrder.courier_name ?? null,
-      })
+        shiprocketOrderId: shiprocketOrder.order_id,
+        shiprocketShipmentId: shiprocketOrder.shipment_id,
+        // Optional: save status if returned
+        shipmentStatus: shiprocketOrder.status,
+      });
     }
 
     return res.status(200).json(new ApiResponse(200, order, "Order updated with Shiprocket details"));

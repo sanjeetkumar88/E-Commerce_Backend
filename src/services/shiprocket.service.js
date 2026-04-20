@@ -33,10 +33,10 @@ export const createShiprocketCheckoutSession = async (
 
     console.log("shiprocketItems", shiprocketItems);
 
-    
+
 
     const payload = {
-      cart_data:{items: shiprocketItems},
+      cart_data: { items: shiprocketItems },
       redirect_url: redirectUrl,
       timestamp: new Date().toISOString(),
       order_reference_id: orderReferenceId,
@@ -116,11 +116,13 @@ export const fetchOrderDetailsFromShiprocket = async (shiprocketId) => {
   }
 };
 
-export const createShiprocketOrder = async (order,billing) => {
+export const createShiprocketOrder = async (order, billing) => {
 
   try {
     /* ---------------- 2. FETCH ITEMS ---------------- */
     const items = await OrderItem.find({ orderId: order._id }).lean();
+
+    console.log("items", items);
 
     if (!items.length) throw new Error("No order items");
 
@@ -149,72 +151,84 @@ export const createShiprocketOrder = async (order,billing) => {
     }
 
     /* ---------------- 5. BUILD ITEMS ---------------- */
-    const shiprocketItems = items.map((item) => ({
-      name: item.title,
-      sku: item.sku,
-      units: item.quantity,
-      selling_price: Number(item.price),
-      discount: Number(item.discountAmount || 0),
-      tax: Number(item.taxAmount || 0),
-      hsn: variantMap.get(item.variantId.toString())?.hsn || '',
-    }));
+    let totalWeight = 0;
+    let maxLength = 0;
+    let maxBreadth = 0;
+    let totalHeight = 0;
 
-    // name: item.productName,
-    //   sku: item.productSku,
-    //   units: qty,
-    //   selling_price: Number(item.unitPrice),
-    //   discount: 0,
-    //   tax: Number(variant.tax || 0),
-    //   hsn: variant.hsn || '',
+    const shiprocketItems = items.map((item) => {
+      const variant = variantMap.get(item.variantId.toString());
+
+      // Accumulate weight (OrderItem.weight is in KG)
+      totalWeight += (Number(item.weight) || 0) * item.quantity;
+
+      // Calculate package dimensions
+      if (variant?.dimensions) {
+        maxLength = Math.max(maxLength, variant.dimensions.length || 0);
+        maxBreadth = Math.max(maxBreadth, variant.dimensions.width || 0);
+        totalHeight += (variant.dimensions.height || 0) * item.quantity;
+      }
+
+      return {
+        name: item.title,
+        sku: item.sku,
+        units: item.quantity,
+        selling_price: Number(item.price),
+        discount: Number(item.discountAmount || 0),
+        tax: Number(item.taxAmount || 0),
+        hsn: variant?.hsnCode || '',
+      };
+    });
 
     /* ---------------- 6. API CALL ---------------- */
+
     const token = await getShiprocketToken();
     const payload = {
-    order_id: order.orderNumber || order._id.toString(),
-    order_date: new Date().toISOString().replace('T', ' ').slice(0, 16),
-    pickup_location: process.env.SHIPROCKET_PICKUP_LOCATION || 'Default',
-    billing_customer_name: billing.first_name,
-    billing_last_name: billing.last_name,
-    billing_address: billing.line1 + (billing.line2 ? `, ${billing.line2}` : ''),
-    billing_city: billing.city,
-    billing_pincode: billing.pincode,
-    billing_state: billing.state,
-    billing_country: 'India',
-    billing_email: billing.email,
-    billing_phone: billing.phone,
-    shipping_is_billing: true,
-    order_items: shiprocketItems,
-    payment_method: order.paymentStatus === 'paid' ? 'Prepaid' : 'COD',
-    shipping_charges: Number(order.shippingAmount || 0),
-    giftwrap_charges: 0,
-    transaction_charges: 0,
-    total_discount: Number(order.discountAmount || 0),
-    sub_total: Number(order.subtotal || 1000),
-    length: items.dimension?.length || 10,
-    breadth: items.dimension?.breadth || 10,
-    height: items.dimension?.height || 10,
-    weight: items.weight/1000,
-    total_tax: Number(order.taxAmount || 0),
-  };
+      order_id: order.orderNumber || order._id.toString(),
+      order_date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      pickup_location: process.env.SHIPROCKET_PICKUP_LOCATION || 'Default',
+      billing_customer_name: billing.first_name,
+      billing_last_name: billing.last_name,
+      billing_address: billing.line1 + (billing.line2 ? `, ${billing.line2}` : ''),
+      billing_city: billing.city,
+      billing_pincode: billing.pincode,
+      billing_state: billing.state,
+      billing_country: 'India',
+      billing_email: billing.email,
+      billing_phone: billing.phone,
+      shipping_is_billing: true,
+      order_items: shiprocketItems,
+      payment_method: order.paymentStatus === 'paid' ? 'Prepaid' : 'COD',
+      shipping_charges: Number(order.shippingAmount || 0),
+      giftwrap_charges: 0,
+      transaction_charges: 0,
+      total_discount: Number(order.discountAmount || 0),
+      sub_total: Number(order.subtotal || 1000),
+      length: maxLength || 10,
+      breadth: maxBreadth || 10,
+      height: totalHeight || 10,
+      weight: totalWeight / 1000 || 0.5,
+      total_tax: Number(order.taxAmount || 0),
+    };
 
-  console.log("Shiprocket Create Order Payload:", payload);
+    console.log("Shiprocket Create Order Payload:", payload);
 
     const response = await axios.post(
       "https://apiv2.shiprocket.in/v1/external/orders/create/adhoc",
       payload,
       {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       },
-    },
     );
 
     const data = response.data;
 
     console.log("Shiprocket Create Order Response:", response.data);
 
-    
+
 
     /* ---------------- 7. SUCCESS ---------------- */
     await Order.findByIdAndUpdate(order._id, {
