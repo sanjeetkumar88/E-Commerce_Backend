@@ -236,7 +236,6 @@ export const createShiprocketOrder = async (order, billing) => {
       shiprocketShipmentId: data.shipment_id,
       shiprocketProcessing: false,
       orderStatus: "confirmed",
-      rawShiprocketResponse: data,
     });
 
     return data;
