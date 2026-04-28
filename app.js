@@ -5,9 +5,21 @@ import { ApiError } from "./src/utils/ApiError.js";
 import morganMiddleware from "./src/middlewares/morganMiddleware.js";
 import logger from './src/utils/logger.js';
 import { globalLimiter, apiReadLimiter, authLimiter, checkoutLimiter } from "./src/middlewares/rateLimiter.js";
+import helmet from "helmet";
+import compression from "compression";
+import swaggerUi from "swagger-ui-express";
+import fs from 'fs';
+
+const swaggerFile = JSON.parse(fs.readFileSync('./swagger_output.json', 'utf-8'));
 
 const app = express();
 app.set("trust proxy", 1);
+
+// Security Middlewares
+app.use(helmet());
+
+// Performance Middleware
+app.use(compression());
 
 app.use(globalLimiter);
 app.use(morganMiddleware);
@@ -51,6 +63,9 @@ app.use("/api/v1/webhook", webhookRoutes);
 app.use("/api/v1/checkout", checkoutLimiter, checkoutRoutes);
 app.use("/api/v1/orders", checkoutLimiter, orderRoutes);
 app.use("/api/v1/admin", adminRoutes);
+
+// API Documentation Route
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
 
 app.use((err, req, res, next) => {
     // Check if the error is an instance of your custom ApiError

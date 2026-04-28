@@ -11,16 +11,56 @@ import { verifyJWT } from "../middlewares/authMiddleware.js";
 const router = Router();
 
 /**
- * @route   POST /api/v1/auth/register
- * @desc    Register user & auto-login
- * @access  Public
+ * @swagger
+ * /auth/register:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               phone:
+ *                 type: string
+ *                 description: 10 digit Indian phone number
+ *                 example: "9876543210"
+ *               name:
+ *                 type: string
+ *                 example: "John Doe"
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *       400:
+ *         description: Validation Error
  */
 router.route("/register").post(register);
 
 /**
- * @route   POST /api/v1/auth/login
- * @desc    Login user
- * @access  Public
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: Login via phone number
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - phone
+ *             properties:
+ *               phone:
+ *                 type: string
+ *                 example: "9876543210"
+ *     responses:
+ *       200:
+ *         description: Logged in successfully
+ *       404:
+ *         description: User not found
  */
 router.route("/login").post(login);
 
