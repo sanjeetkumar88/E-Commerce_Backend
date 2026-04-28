@@ -41,11 +41,12 @@ export const register = async (req, res, next) => {
 
     if (req.body.phoneNumber) {
       try {
-        if (!isValidPhoneNumber(req.body.phoneNumber, "IN")) {
-          throw new ApiError(400, "Invalid phone number format");
+        const phone = req.body.phoneNumber.toString();
+        if (!isValidPhoneNumber(phone, "IN") || !/^[6-9]\d{9}$/.test(phone)) {
+          throw new ApiError(400, "Invalid Indian phone number. Must be 10 digits starting with 6-9.");
         }
       } catch (err) {
-        throw new ApiError(400, "Invalid phone number format");
+        throw new ApiError(400, err.message || "Invalid phone number format");
       }
     }
     
@@ -86,11 +87,12 @@ export const login = async (req, res, next) => {
     }
 
     try {
-      if (!isValidPhoneNumber(phoneNumber, "IN")) {
-        throw new ApiError(400, "Invalid phone number format");
+      const phone = phoneNumber.toString();
+      if (!isValidPhoneNumber(phone, "IN") || !/^[6-9]\d{9}$/.test(phone)) {
+        throw new ApiError(400, "Invalid phone number");
       }
     } catch (err) {
-      throw new ApiError(400, "Invalid phone number format");
+      throw new ApiError(400, err.message || "Invalid phone number format");
     }
 
     const { user, accessToken, refreshToken } = await loginUserWithPhone(phoneNumber);
