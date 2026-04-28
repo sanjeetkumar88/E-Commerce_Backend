@@ -7,7 +7,9 @@ import {
   getMeService,
 } from "../services/auth.service.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
 import timeToMs from "../utils/time.util.js";
+import { isValidPhoneNumber } from "libphonenumber-js";
 
 /* -------------------------------------------------------------------------- */
 /*                               COOKIE OPTIONS                                */
@@ -36,6 +38,16 @@ export const baseCookieOptions = {
 export const register = async (req, res, next) => {
   try {
     console.log(req.body);
+
+    if (req.body.phoneNumber) {
+      try {
+        if (!isValidPhoneNumber(req.body.phoneNumber, "IN")) {
+          throw new ApiError(400, "Invalid phone number format");
+        }
+      } catch (err) {
+        throw new ApiError(400, "Invalid phone number format");
+      }
+    }
     
     const { user, accessToken, refreshToken } = await registerUser(req.body);
 
@@ -67,7 +79,21 @@ export const register = async (req, res, next) => {
 
 export const login = async (req, res, next) => {
   try {
-    const { user, accessToken, refreshToken } = await loginUserWithPhone(req.body.phoneNumber);
+    const { phoneNumber } = req.body;
+
+    if (!phoneNumber) {
+      throw new ApiError(400, "Phone number is required");
+    }
+
+    try {
+      if (!isValidPhoneNumber(phoneNumber, "IN")) {
+        throw new ApiError(400, "Invalid phone number format");
+      }
+    } catch (err) {
+      throw new ApiError(400, "Invalid phone number format");
+    }
+
+    const { user, accessToken, refreshToken } = await loginUserWithPhone(phoneNumber);
 
     const safeUser = user.toObject();
     delete safeUser.password;

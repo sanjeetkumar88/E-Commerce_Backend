@@ -52,6 +52,13 @@ export const createProduct = async (req, res, next) => {
 
     const handle = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
+    let productImagesUrls = [];
+    if (req.body.productImages) {
+      productImagesUrls = Array.isArray(req.body.productImages) 
+        ? req.body.productImages 
+        : [req.body.productImages];
+    }
+
     const result = await productService.createProductService({
       productData: {
         name,
@@ -73,6 +80,7 @@ export const createProduct = async (req, res, next) => {
         status: status || "draft",
       },
       variants,
+      productImagesUrls,
     });
 
     // Upload images if files were sent along with the create request
@@ -181,6 +189,13 @@ export const updateProduct = async (req, res, next) => {
         : Array.isArray(req.body.removeImageIds) ? req.body.removeImageIds : [];
     } catch (_) { removeImageIds = []; }
 
+    let productImagesUrls = [];
+    if (req.body.productImages) {
+      productImagesUrls = Array.isArray(req.body.productImages) 
+        ? req.body.productImages 
+        : [req.body.productImages];
+    }
+
     const result = await productService.updateProductService({
       productId,
       productData: {
@@ -205,6 +220,7 @@ export const updateProduct = async (req, res, next) => {
       removeVariantIds,
       removeImageIds,
       files: req.files || [],
+      productImagesUrls,
     });
 
     return res.status(200).json(new ApiResponse(true, "Product updated successfully", result));

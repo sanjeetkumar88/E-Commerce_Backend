@@ -8,7 +8,7 @@ import { uploadBufferToCloudinary } from "../utils/cloudinary.js";
 
 /* ---------------- CREATE PRODUCT + VARIANTS ---------------- */
 
-export const createProductService = async ({ productData, variants = [] }) => {
+export const createProductService = async ({ productData, variants = [], productImagesUrls = [] }) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -58,6 +58,7 @@ export const createProductService = async ({ productData, variants = [] }) => {
             dimensions: variant.dimensions,
             hsnCode: variant.hsnCode,
             taxRate: variant.taxRate ?? 0,
+            sku: variant.sku,
           },
         ],
         { session },
@@ -66,8 +67,50 @@ export const createProductService = async ({ productData, variants = [] }) => {
       variantDocs.push(variantDoc[0]);
     }
 
+    // If no default variant was provided, make the first one the default
+    if (!hasDefaultVariant && variantDocs.length > 0) {
+      variantDocs[0].isDefault = true;
+      await variantDocs[0].save({ session });
+      hasDefaultVariant = true;
+    }
+
     if (!hasDefaultVariant) {
-      throw new ApiError(400, "One variant must be marked as default");
+      throw new ApiError(400, "At least one valid product variant is required");
+    }
+
+    let imageDocs = [];
+    if (productImagesUrls && productImagesUrls.length > 0) {
+      for (const url of productImagesUrls) {
+        if (url.trim()) {
+          imageDocs.push({
+            productId: product._id,
+            imageUrl: url.trim(),
+            public_id: `url_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+            isPrimary: false,
+          });
+        }
+      }
+    }
+
+    for (const v of variantDocs) {
+      const originalVariant = variants.find(ov => ov.sku === v.sku || (ov.color === v.color && ov.size === v.size));
+      if (originalVariant && originalVariant.images && Array.isArray(originalVariant.images)) {
+        for (const url of originalVariant.images) {
+          if (url.trim()) {
+            imageDocs.push({
+              productId: product._id,
+              variantId: v._id,
+              imageUrl: url.trim(),
+              public_id: `url_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+              isPrimary: false,
+            });
+          }
+        }
+      }
+    }
+
+    if (imageDocs.length > 0) {
+      await ProductImage.insertMany(imageDocs, { session });
     }
 
     await session.commitTransaction();
@@ -166,6 +209,7 @@ export const updateProductService = async ({
   removeVariantIds = [],
   removeImageIds = [],
   files = [],
+  productImagesUrls = [],
 }) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -262,6 +306,36 @@ export const updateProductService = async ({
           public_id: cloudRes.public_id,
           isPrimary: false,
         });
+      }
+    }
+
+    if (productImagesUrls && productImagesUrls.length > 0) {
+      for (const url of productImagesUrls) {
+        if (url.trim()) {
+          imageDocs.push({
+            productId,
+            imageUrl: url.trim(),
+            public_id: `url_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+            isPrimary: false,
+          });
+        }
+      }
+    }
+
+    for (const v of variants) {
+      const variantId = v.id || (variantDocs.find(vd => vd.sku === v.sku || (vd.color === v.color && vd.size === v.size))?._id);
+      if (variantId && v.images && Array.isArray(v.images)) {
+        for (const url of v.images) {
+          if (url.trim()) {
+            imageDocs.push({
+              productId,
+              variantId,
+              imageUrl: url.trim(),
+              public_id: `url_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+              isPrimary: false,
+            });
+          }
+        }
       }
     }
 
@@ -402,11 +476,19 @@ export const getProductsShipRocketService = async ({
 
   // 🔎 Full-text search (Optimized for indexes)
   if (search && search.trim() !== "") {
+    const searchRegex = new RegExp(search.trim(), "i");
+    const Category = mongoose.model("Category");
+    const matchedCategories = await Category.find({ name: searchRegex }).select('_id').lean();
+    const categoryIds = matchedCategories.map(c => c._id);
+
     matchQuery.$or = [
-      { name: new RegExp(search.trim(), "i") },
-      { description: new RegExp(search.trim(), "i") },
-      { tags: new RegExp(search.trim(), "i") },
+      { name: searchRegex },
+      { description: searchRegex },
+      { tags: searchRegex },
     ];
+    if (categoryIds.length > 0) {
+      matchQuery.$or.push({ categoryId: { $in: categoryIds } });
+    }
   }
 
   // Execute Count and Aggregation in parallel for Production speed
@@ -591,7 +673,19 @@ export const getProductListService = async ({
   };
 
   if (search?.trim()) {
-    baseMatch.$text = { $search: search.trim() };
+    const searchRegex = new RegExp(search.trim(), "i");
+    const Category = mongoose.model("Category");
+    const matchedCategories = await Category.find({ name: searchRegex }).select('_id').lean();
+    const categoryIds = matchedCategories.map(c => c._id);
+
+    baseMatch.$or = [
+      { name: searchRegex },
+      { description: searchRegex },
+      { tags: searchRegex },
+    ];
+    if (categoryIds.length > 0) {
+      baseMatch.$or.push({ categoryId: { $in: categoryIds } });
+    }
   }
 
   // Sorting Logic
@@ -613,7 +707,6 @@ export const getProductListService = async ({
             $match: {
               $expr: { $eq: ["$productId", "$$pid"] },
               isActive: true,
-              stockQuantity: { $gt: 0 },
               ...(colors.length > 0 && { color: { $in: colors } }),
               ...(sizes.length > 0 && { size: { $in: sizes } }),
             },
@@ -766,7 +859,19 @@ export const getProductListServiceAdmin = async ({
   };
 
   if (search?.trim()) {
-    baseMatch.$text = { $search: search.trim() };
+    const searchRegex = new RegExp(search.trim(), "i");
+    const Category = mongoose.model("Category");
+    const matchedCategories = await Category.find({ name: searchRegex }).select('_id').lean();
+    const categoryIds = matchedCategories.map(c => c._id);
+
+    baseMatch.$or = [
+      { name: searchRegex },
+      { description: searchRegex },
+      { tags: searchRegex },
+    ];
+    if (categoryIds.length > 0) {
+      baseMatch.$or.push({ categoryId: { $in: categoryIds } });
+    }
   }
 
   // Sorting Logic
@@ -897,6 +1002,21 @@ export const getProductListServiceAdmin = async ({
               salePrice: "$defaultVariant.salePrice",
               sku: "$defaultVariant.sku",
               stockQuantity: "$defaultVariant.stockQuantity",
+              variants: 1,
+              hasLowStock: {
+                $gt: [
+                  {
+                    $size: {
+                      $filter: {
+                        input: { $ifNull: ["$variants", []] },
+                        as: "v",
+                        cond: { $lt: ["$$v.stockQuantity", 10] }
+                      }
+                    }
+                  },
+                  0
+                ]
+              },
               isActive: 1,
               isFeatured: 1,
               createdAt: 1,
@@ -1350,20 +1470,14 @@ export const deleteProductService = async ({
     throw new ApiError(400, "Invalid product ID");
   }
 
-  if (hardDelete) {
-    await Product.findByIdAndDelete(productId);
-    await ProductVariant.deleteMany({ productId });
-    await ProductImage.deleteMany({ productId });
-    return { message: "Product permanently deleted" };
-  } else {
-    const product = await Product.findByIdAndUpdate(
-      productId,
-      { isDeleted: true, isActive: false },
-      { new: true },
-    );
-    if (!product) throw new ApiError(404, "Product not found");
-    return { message: "Product soft deleted" };
-  }
+  // Always perform hard delete as requested by user
+  const product = await Product.findByIdAndDelete(productId);
+  if (!product) throw new ApiError(404, "Product not found");
+
+  await ProductVariant.deleteMany({ productId });
+  await ProductImage.deleteMany({ productId });
+
+  return { message: "Product and associated data permanently deleted from database" };
 };
 
 /* ---------------- SHIPROCKET PAYLOAD FORMATTER ---------------- */

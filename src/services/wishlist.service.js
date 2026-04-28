@@ -9,11 +9,31 @@ export const addToWishlist = async (userId, productId, variantId) => {
   if (!mongoose.Types.ObjectId.isValid(productId))
     throw new ApiError(400, "Invalid product ID");
 
-  if (!mongoose.Types.ObjectId.isValid(variantId))
-    throw new ApiError(400, "Invalid variant ID");
+  let targetVariantId = variantId;
+
+  // If no variantId provided, find the default variant for this product
+  if (!targetVariantId || !mongoose.Types.ObjectId.isValid(targetVariantId)) {
+    const defaultVariant = await ProductVariant.findOne({
+      productId,
+      isActive: true,
+      isDefault: true,
+    });
+    
+    if (defaultVariant) {
+      targetVariantId = defaultVariant._id;
+    } else {
+      // Fallback to the first active variant
+      const firstVariant = await ProductVariant.findOne({
+        productId,
+        isActive: true,
+      });
+      if (!firstVariant) throw new ApiError(404, "No active variants found for this product");
+      targetVariantId = firstVariant._id;
+    }
+  }
 
   const variant = await ProductVariant.findOne({
-    _id: variantId,
+    _id: targetVariantId,
     isActive: true,
   }).populate("productId");
 
@@ -27,7 +47,7 @@ export const addToWishlist = async (userId, productId, variantId) => {
   }
 
   await WishlistItem.findOneAndUpdate(
-    { wishlistId: wishlist._id, productId, variantId },
+    { wishlistId: wishlist._id, productId, variantId: targetVariantId },
     {},
     { upsert: true, new: true }
   );
@@ -66,17 +86,36 @@ export const mergeGuestWishlistService = async (
   for (const item of guestItems) {
     const { productId, variantId } = item;
 
-    if (!variantId) continue;
+    let targetVariantId = variantId;
+
+    if (!targetVariantId || !mongoose.Types.ObjectId.isValid(targetVariantId)) {
+      const defaultVariant = await ProductVariant.findOne({
+        productId,
+        isActive: true,
+        isDefault: true,
+      });
+      if (defaultVariant) {
+        targetVariantId = defaultVariant._id;
+      } else {
+        const firstVariant = await ProductVariant.findOne({
+          productId,
+          isActive: true,
+        });
+        if (firstVariant) targetVariantId = firstVariant._id;
+      }
+    }
+
+    if (!targetVariantId) continue;
 
     const variant = await ProductVariant.findOne({
-      _id: variantId,
+      _id: targetVariantId,
       isActive: true,
     });
 
     if (!variant) continue;
 
     await WishlistItem.findOneAndUpdate(
-      { wishlistId: wishlist._id, productId, variantId },
+      { wishlistId: wishlist._id, productId, variantId: targetVariantId },
       {},
       { upsert: true }
     );
