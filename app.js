@@ -1,8 +1,10 @@
+import "./src/config/env.js";
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { ApiError } from "./src/utils/ApiError.js";
 import morganMiddleware from "./src/middlewares/morganMiddleware.js";
+import requestIdMiddleware from "./src/middlewares/requestId.middleware.js";
 import logger from './src/utils/logger.js';
 import { globalLimiter, apiReadLimiter, authLimiter, checkoutLimiter } from "./src/middlewares/rateLimiter.js";
 import helmet from "helmet";
@@ -21,6 +23,7 @@ app.use(helmet());
 // Performance Middleware
 app.use(compression());
 
+app.use(requestIdMiddleware);
 app.use(globalLimiter);
 app.use(morganMiddleware);
 
@@ -71,23 +74,17 @@ app.use("/api/v1/admin", adminRoutes);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
 
 app.use((err, req, res, next) => {
-    // Check if the error is an instance of your custom ApiError
-    let { statusCode, message } = err;
+    console.error("API ERROR:", err);
+    
+    const statusCode = err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
 
-    if (!(err instanceof ApiError)) {
-        statusCode = err.statusCode || 500;
-        message = err.message || "Internal Server Error";
-    }
-
-    const response = {
+    res.status(statusCode).json({
         success: false,
         statusCode,
         message,
         stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
-    };
-
-    // Force the response to be JSON
-    res.status(statusCode).json(response);
+    });
 });
 
 

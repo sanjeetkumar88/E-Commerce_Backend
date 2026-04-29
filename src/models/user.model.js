@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       unique: true,
+      sparse: true,
       maxlength: 255,
     },
     password: {
@@ -68,6 +69,9 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+userSchema.index({ role: 1 });
+userSchema.index({ isActive: 1, isDeleted: 1 });
+
 // Virtual field for addresses
 userSchema.virtual("addresses", {
   ref: "UserAddress",
@@ -81,7 +85,7 @@ userSchema.set("toJSON", { virtuals: true });
 
 
 userSchema.pre("save", async function () {
-  if (!this.isModified("password")) return;
+  if (!this.isModified("password") || !this.password) return;
 
   this.password = await bcrypt.hash(this.password, 10);
 });

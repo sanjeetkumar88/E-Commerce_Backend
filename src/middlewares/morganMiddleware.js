@@ -10,8 +10,10 @@ const stream = {
 
 // Build the morgan middleware
 const morganMiddleware = morgan(
-  ":method :url :status :res[content-length] - :response-time ms",
+  ":method :url :status :res[content-length] - :response-time ms [RequestID: :id]",
   { stream }
 );
+
+morgan.token('id', (req) => req.id);
 
 export default morganMiddleware;

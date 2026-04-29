@@ -36,9 +36,8 @@ import { generateHmac } from "../utils/shiprocket.js";
 
 export const processShiprocketWebhook = async (payload) => {
   try {
+    return payload;
 
-    
-    return data;
   } catch (error) {
     console.error("❌ Service Error:", error.message);
     throw error;

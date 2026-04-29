@@ -27,31 +27,22 @@ export const shiprocketWebhookController = async (req, res, next) => {
     });
 
   } catch (error) {
-    next(error);
-    return res.status(500).json({
+    console.error("Webhook processing error:", error);
+    return res.status(200).json({
       success: false,
-      message: "Webhook failed",
+      message: "Webhook processed with error",
     });
   }
 };
 
 export const shiprocketOrderUpdateWebhook = async (req, res, next) => {
   try {
-
-    // const apiKey = req.headers["x-api-key"];
-    // if (apiKey && apiKey !== "mysecret123") {
-    //   return res.status(401).json({ message: "Unauthorized" });
-    // }
-
     const data = req.body;
-
     console.log("📩 Shiprocket Webhook Received:", data);
-
     await handleShiprocketWebhookService(data);
-
     res.status(200).json({ success: true });
   } catch (error) {
-    next(error);
+    console.error("Order Update Webhook error:", error);
     res.status(200).json({ success: false });
   }
 };
