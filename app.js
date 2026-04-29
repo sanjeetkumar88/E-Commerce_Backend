@@ -74,7 +74,11 @@ app.use("/api/v1/admin", adminRoutes);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
 
 app.use((err, req, res, next) => {
-    console.error("API ERROR:", err);
+    logger.error(`${req.method} ${req.url} [RequestID: ${req.id}] - ${err.message}`);
+    if (err.statusCode === 500 || !err.statusCode) {
+        logger.error(err.stack);
+    }
+
     
     const statusCode = err.statusCode || 500;
     const message = err.message || "Internal Server Error";

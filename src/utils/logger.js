@@ -1,7 +1,5 @@
-import winston from "winston";
-import path from "path";
+import winston from 'winston';
 
-// Define log levels
 const levels = {
   error: 0,
   warn: 1,
@@ -10,39 +8,39 @@ const levels = {
   debug: 4,
 };
 
-// Define colors for each level
+const level = () => {
+  const env = process.env.NODE_ENV || 'development';
+  const isDevelopment = env === 'development';
+  return isDevelopment ? 'debug' : 'info';
+};
+
 const colors = {
-  error: "red",
-  warn: "yellow",
-  info: "green",
-  http: "magenta",
-  debug: "white",
+  error: 'red',
+  warn: 'yellow',
+  info: 'green',
+  http: 'magenta',
+  debug: 'white',
 };
 
 winston.addColors(colors);
 
 const format = winston.format.combine(
-  winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss:ms" }),
+  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
   winston.format.colorize({ all: true }),
   winston.format.printf(
-    (info) => `${info.timestamp} ${info.level}: ${info.message}`
-  )
+    (info) => `${info.timestamp} ${info.level}: ${info.message}`,
+  ),
 );
 
 const transports = [
-  // Allow the use of the console to print the messages
-  new winston.transports.Console(),
-  // Allow to print all the error level messages inside the error.log file
-  new winston.transports.File({
-    filename: "logs/error.log",
-    level: "error",
+  new winston.transports.Console({
+    // Suppress logs during tests unless explicitly needed
+    silent: process.env.NODE_ENV === 'test'
   }),
-  // Allow to print all the error level messages inside the all.log file
-  new winston.transports.File({ filename: "logs/all.log" }),
 ];
 
 const logger = winston.createLogger({
-  level: "debug",
+  level: level(),
   levels,
   format,
   transports,
