@@ -86,7 +86,7 @@ export const createProductService = async ({ productData, variants = [], product
             productId: product._id,
             imageUrl: url.trim(),
             public_id: `url_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-            isPrimary: false,
+            isPrimary: imageDocs.length === 0, // Set first image as primary
           });
         }
       }
@@ -1231,9 +1231,9 @@ export const getProductDetailService = async (identifier) => {
                 {
                   $match: {
                     $expr: { $eq: ["$productId", "$$pid"] },
-                    isPrimary: true,
                   },
                 },
+                { $sort: { isPrimary: -1, createdAt: 1 } },
                 { $limit: 1 },
                 { $project: { imageUrl: 1 } },
               ],

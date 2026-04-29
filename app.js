@@ -35,6 +35,9 @@ app.use(cookieParser());
 app.use(express.static('public'));
 
 app.get("/test", (req, res) => {
+  /*  #swagger.tags = ['Test']
+      #swagger.summary = 'Test route'
+  */
   logger.info("Checking the test route!");
   res.send("Hello World");
 });

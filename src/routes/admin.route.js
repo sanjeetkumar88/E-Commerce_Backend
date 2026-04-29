@@ -9,6 +9,12 @@ const router = Router();
 router.use(verifyJWT);
 router.use(isAdmin);
 
-router.route("/dashboard").get(getDashboard); // GET /api/v1/admin/dashboard
+router.route("/dashboard").get((req, res, next) => {
+    /*  #swagger.tags = ['Admin']
+        #swagger.summary = 'Get admin dashboard data'
+        #swagger.security = [{ "bearerAuth": [] }]
+    */
+    getDashboard(req, res, next);
+});
 
 export default router;

@@ -17,35 +17,96 @@ import upload from "../middlewares/multerMiddleware.js";
 const router = Router();
 
 /* -------------------- GET ALL CATEGORIES -------------------- */
-router.route("/").get(getAllCategories);
+router.route("/").get((req, res, next) => {
+    /*  #swagger.tags = ['Category']
+        #swagger.summary = 'Get all categories'
+    */
+    getAllCategories(req, res, next);
+});
 
 router
   .route("/createcategory")
-  .post(verifyJWT, isAdmin, upload.single("image"), createCategory);
+  .post(verifyJWT, isAdmin, upload.single("image"), (req, res, next) => {
+    /*  #swagger.tags = ['Category Admin']
+        #swagger.summary = 'Create a new category'
+        #swagger.security = [{ "bearerAuth": [] }]
+        #swagger.consumes = ['multipart/form-data']
+        #swagger.parameters['image'] = {
+            in: 'formData',
+            type: 'file',
+            description: 'Category image'
+        }
+    */
+    createCategory(req, res, next);
+  });
 
 /* -------------------- UPDATE CATEGORY -------------------- */
 router
   .route("/updatecategory/:id")
-  .put(verifyJWT, isAdmin, upload.single("image"), updateCategory);
+  .put(verifyJWT, isAdmin, upload.single("image"), (req, res, next) => {
+    /*  #swagger.tags = ['Category Admin']
+        #swagger.summary = 'Update category'
+        #swagger.security = [{ "bearerAuth": [] }]
+        #swagger.parameters['id'] = { description: 'Category ID' }
+        #swagger.consumes = ['multipart/form-data']
+        #swagger.parameters['image'] = {
+            in: 'formData',
+            type: 'file',
+            description: 'Category image'
+        }
+    */
+    updateCategory(req, res, next);
+  });
 
 /* -------------------- DELETE CATEGORY -------------------- */
 router
   .route("/deletecategory/:id")
-  .delete(verifyJWT, isAdmin, deleteCategory);
+  .delete(verifyJWT, isAdmin, (req, res, next) => {
+    /*  #swagger.tags = ['Category Admin']
+        #swagger.summary = 'Delete category'
+        #swagger.security = [{ "bearerAuth": [] }]
+        #swagger.parameters['id'] = { description: 'Category ID' }
+    */
+    deleteCategory(req, res, next);
+  });
 
-  router.route("/tree").get(getCategoryTree);
+router.route("/tree").get((req, res, next) => {
+    /*  #swagger.tags = ['Category']
+        #swagger.summary = 'Get category tree structure'
+    */
+    getCategoryTree(req, res, next);
+});
+
 /*----------------------PRODUCTS BY CATEGORY------------------*/
-// /api/products/category?categoryhandle=decor
-// /api/products/category?categoryhandle=decor&page=1&limit=12
-// /api/products/category?categoryhandle=decor&colors=red,blue
-// /api/products/category?categoryhandle=decor&sizes=M,L
-// /api/products/category?categoryhandle=decor&sort=price_asc
-router.route("/:categoryhandle").get(getProductsByCategory);
+router.route("/:categoryhandle").get((req, res, next) => {
+    /*  #swagger.tags = ['Category']
+        #swagger.summary = 'Get products by category handle'
+        #swagger.parameters['categoryhandle'] = { description: 'Category handle/slug' }
+        #swagger.parameters['page'] = { in: 'query', description: 'Page number' }
+        #swagger.parameters['limit'] = { in: 'query', description: 'Items per page' }
+        #swagger.parameters['colors'] = { in: 'query', description: 'Filter by colors' }
+        #swagger.parameters['sizes'] = { in: 'query', description: 'Filter by sizes' }
+        #swagger.parameters['sort'] = { in: 'query', description: 'Sort option' }
+    */
+    getProductsByCategory(req, res, next);
+});
 
-router.route("/sync/:categoryId").get(getProductsByCategoryShipRocket);
+router.route("/sync/:categoryId").get((req, res, next) => {
+    /*  #swagger.tags = ['Category Admin']
+        #swagger.summary = 'Sync products for a category from ShipRocket'
+        #swagger.parameters['categoryId'] = { description: 'Category ID' }
+    */
+    getProductsByCategoryShipRocket(req, res, next);
+});
 
 /*----------------------CATEGORY BREADCRUMBS------------------*/
-router.route("/:id/breadcrumbs").get(getCategoryBreadcrumbs);
+router.route("/:id/breadcrumbs").get((req, res, next) => {
+    /*  #swagger.tags = ['Category']
+        #swagger.summary = 'Get category breadcrumbs'
+        #swagger.parameters['id'] = { description: 'Category ID' }
+    */
+    getCategoryBreadcrumbs(req, res, next);
+});
 
 /*----------------------CATEGORY TREE------------------*/
 

@@ -4,8 +4,18 @@ import { shiprocketOrderUpdateWebhook, shiprocketWebhookController } from "../co
 
 const router = express.Router();
 
-router.post("/checkoutOrder", shiprocketWebhookController);
+router.post("/checkoutOrder", (req, res, next) => {
+    /*  #swagger.tags = ['Webhook']
+        #swagger.summary = 'Shiprocket checkout order webhook'
+    */
+    shiprocketWebhookController(req, res, next);
+});
 
-router.post("/orderUpdate", shiprocketOrderUpdateWebhook);
+router.post("/orderUpdate", (req, res, next) => {
+    /*  #swagger.tags = ['Webhook']
+        #swagger.summary = 'Shiprocket order update webhook'
+    */
+    shiprocketOrderUpdateWebhook(req, res, next);
+});
 
 export default router;
